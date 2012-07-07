@@ -54,19 +54,19 @@ enum { TOK_ERR = -1, TOK_NL=0, TOK_SECTION, TOK_KEY, TOK_VALUE, TOK_COMMENT};
 
 /* Internal functions */
 
-static uint32_t hash(char *key);
-static int linescan(char **lp, char *tokstring);
+static uint32_t hash(const String key);
+static int linescan(String *lp, String tokstring);
 static String removespctab(String line);
-static char copyuntil(char *dest, char **srcp, int max_dest_len, char *stopchrs);
+static char copyuntil(String dest, String *srcp, int max_dest_len, const String stopchrs);
 
 /*
 * Hash a string
 */
 
-static uint32_t hash(String key)
+static uint32_t hash(const String key)
 {
 	int len = strlen(key);
-	uint32_t hash, i;
+	register uint32_t hash, i;
 
 	if(!key)
 		return 0;
@@ -93,7 +93,7 @@ static uint32_t hash(String key)
 * match, return a nul.
 */
 
-static char copyuntil(String dest, String *srcp, int max_dest_len, String stopchrs){
+static char copyuntil(String dest, String *srcp, int max_dest_len, const String stopchrs){
 
 	String p = "";
 	int i;
@@ -238,11 +238,27 @@ static int linescan(String *lp, String tokstring){
 /* Global functions */
 
 /*
+* Safer string copy
+*/
+
+String confreadStringCopy(String dest, const String src, int charsToCopy)
+{
+	if((!dest) || (!src))
+		return NULL;
+
+	strncpy(dest, src, charsToCopy);
+	dest[charsToCopy - 1] = 0;
+	return dest;
+}
+
+
+
+/*
 * Retrieve a section structure by name. If it doesn't exist, return NULL
 */
 
 
-SectionEntryPtr_t confreadFindSection(ConfigEntryPtr_t ce, String section)
+SectionEntryPtr_t confreadFindSection(ConfigEntryPtr_t ce, const String section)
 {
 	uint32_t sh;
 	SectionEntryPtr_t se;
@@ -264,7 +280,7 @@ SectionEntryPtr_t confreadFindSection(ConfigEntryPtr_t ce, String section)
 * Return the section name, or NULL if it does not exist
 */
 
-String confreadGetSection(SectionEntryPtr_t se)
+const String confreadGetSection(SectionEntryPtr_t se)
 {
 	if((!se) || (se->magic != KE_MAGIC) || (!se->section))
 		return NULL;
@@ -311,7 +327,7 @@ unsigned confreadSectionLineNum(SectionEntryPtr_t se)
 * Return a pointer to the matching key in a section if it exists
 */
 
-KeyEntryPtr_t confreadFindKey(SectionEntryPtr_t se, String key)
+KeyEntryPtr_t confreadFindKey(SectionEntryPtr_t se, const String key)
 {
 	uint32_t kh;
 	KeyEntryPtr_t ke;
@@ -332,7 +348,7 @@ KeyEntryPtr_t confreadFindKey(SectionEntryPtr_t se, String key)
 * Return a key from a key struct
 */
 
-String confreadGetKey(KeyEntryPtr_t ke)
+const String confreadGetKey(KeyEntryPtr_t ke)
 {
 	if((!ke) || (ke->magic != KE_MAGIC) || (!ke->key))
 		return NULL;
@@ -379,7 +395,7 @@ KeyEntryPtr_t confreadGetNextKey(KeyEntryPtr_t ke)
 * Return a value associated with a key struct
 */
 
-String confreadGetValue(KeyEntryPtr_t ke)
+const String confreadGetValue(KeyEntryPtr_t ke)
 {
 	if((!ke) || (ke->magic != KE_MAGIC) || (!ke->value))
 		return NULL;
@@ -391,7 +407,7 @@ String confreadGetValue(KeyEntryPtr_t ke)
 * Find a value by section and key
 */
 
-String confreadValueBySectKey(ConfigEntryPtr_t ce, String section, String key)
+const String confreadValueBySectKey(ConfigEntryPtr_t ce, const String section, const String key)
 {
 	SectionEntryPtr_t se;
 	KeyEntryPtr_t ke;
@@ -410,7 +426,7 @@ String confreadValueBySectKey(ConfigEntryPtr_t ce, String section, String key)
 * Find value by section and key, convert to unsigned int, return in res. 
 */
 
-Bool confReadValueBySectKeyAsUnsigned(ConfigEntryPtr_t ce, String section, String key, unsigned *res)
+Bool confReadValueBySectKeyAsUnsigned(ConfigEntryPtr_t ce, const String section, const String key, unsigned *res)
 {
 	String num = confreadValueBySectKey(ce, section, key);
 	if(num && res){
@@ -424,6 +440,113 @@ Bool confReadValueBySectKeyAsUnsigned(ConfigEntryPtr_t ce, String section, Strin
 	return FALSE;
 }
 
+
+/* 
+* split args function
+*
+* Input string is not modified.
+* List should contain one more entry than the limit as the end is NULL terminated.
+* List entries are malloc'd and will need to be freed when no longer needed.
+* Return count of arguments found or 
+* return -1 if memory could not be allocated.
+*/
+
+int confreadSplitArgs(String string, char sep, String *list, int limit)
+{
+	String start = NULL;
+	int argc;
+	short i, j = 0, len;
+	short state = 0;
+	short done = FALSE;
+	
+	debug(DEBUG_ACTION,"split_args() string: %s, limit: %d", string, limit);
+
+
+	for(i = 0, *list = NULL, argc = 0; !done;){
+		switch(state){
+			case 0: // Lead in
+				if(!string[i]){
+					done = TRUE;
+					continue;
+				}
+				if(string[i] == ' '){ /* Ignore white space */
+					i++;
+					continue;
+				}
+				else if(string[i] == sep){ /* Ignore Leading sep */
+					i++;
+					continue;
+				}
+				start = string + i; 
+				j = i;
+				state = 1; /* found a new string */
+				break;
+
+			case 1: /* New string */
+				if((string[i] == ' ') || (string[i] == sep) || (!string[i])){
+					state = 2; /* found the end of a string */
+					continue;
+				}
+				i++;
+				break;
+		
+			case 2: /* End of a string */
+				len = i - j;	
+				if(!(*list = malloc(len + 1)))
+					return -1; /* Can't allocate memory */
+				confreadStringCopy(*list, start, len);
+				list++;
+				*list = NULL; // Identify the current end of the list with a NULL
+				argc++;
+				if((argc >= limit)){
+					done = TRUE;
+					continue;
+				}
+				state = 3;
+				break;
+	
+			case 3: /* Move past white space to next delimiter plus 1 */
+				if(!string[i]){
+					done = TRUE; /* Nothing more to do */
+					continue;
+				}
+				else if(string[i] == ' '){
+					i++; /* Skip white space */
+					continue;
+				}
+				else if(string[i] == sep){ /* Found sep */
+					i++;
+					state = 4;
+				}
+				else
+					i++;
+				break;
+
+			case 4: /* Remove any white space before another string */
+				if(!string[i]){
+					done = TRUE;
+					continue;
+				}
+				if((string[i] == ' ') || (string[i] == sep)){
+					i++;
+					continue;
+				}
+				else{		
+					start = string + i;
+					j = i;
+					state = 1;
+				}
+				break;
+	
+			default:
+				state = 0;
+				break;
+		}
+	}
+	
+	debug(DEBUG_EXPECTED," split_args() argc: %d", argc);
+	return argc;
+}
 
 
 

@@ -64,31 +64,36 @@ struct configent{
 */
 
 /* Config functions */
-ConfigEntryPtr_t confreadScan(String confpath, void (*error_callback)(int type, int linenum, String info));
+ConfigEntryPtr_t confreadScan(const String confpath, void (*error_callback)(int type, int linenum, const String info));
 void confreadFree(ConfigEntry_t *theConfig);
 
 /* Section functions */
-SectionEntryPtr_t confreadFindSection(ConfigEntryPtr_t ce, String section);
-String confreadGetSection(SectionEntryPtr_t se);
+SectionEntryPtr_t confreadFindSection(ConfigEntryPtr_t ce, const String section);
+const String confreadGetSection(SectionEntryPtr_t se);
 SectionEntryPtr_t confreadGetFirstSection(ConfigEntryPtr_t ce);
 SectionEntryPtr_t confreadGetNextSection(SectionEntryPtr_t se);
 unsigned confreadSectionLineNum(SectionEntryPtr_t se);
 
 /* Key Functions */
-KeyEntryPtr_t confreadFindKey(SectionEntryPtr_t se, String key);
-String confreadGetKey(KeyEntryPtr_t ke);
+KeyEntryPtr_t confreadFindKey(SectionEntryPtr_t se, const String key);
+const String confreadGetKey(KeyEntryPtr_t ke);
 KeyEntryPtr_t confreadGetFirstKey(SectionEntryPtr_t se);
 KeyEntryPtr_t confreadGetNextKey(KeyEntryPtr_t ke);
 unsigned confreadKeyLineNum(KeyEntryPtr_t ke);
 
 
 /* Value functions */
-String confreadGetValue(KeyEntryPtr_t ke);
-String confreadValueBySectKey(ConfigEntryPtr_t ce, String section, String key);
-Bool confReadValueBySectKeyAsUnsigned(ConfigEntryPtr_t ce, String section, String key, unsigned *res);
+const String confreadGetValue(KeyEntryPtr_t ke);
+const String confreadValueBySectKey(ConfigEntryPtr_t ce, const String section, const String key);
+Bool confReadValueBySectKeyAsUnsigned(ConfigEntryPtr_t ce, const String section, const String key, unsigned *res);
 
 /*Default error handler*/
-void confReadDefErrorHandler( int etype, int linenum, String path);
+void confReadDefErrorHandler( int etype, int linenum, const String info);
+
+/* Utility Functions */
+
+int confreadSplitArgs(const String string, char sep, String *list, int limit);
+String confreadStringCopy(String dest, const String src, int charsToCopy);
 
 /* Debugging functions */
 void confreadDebugDump(ConfigEntryPtr_t ce);
