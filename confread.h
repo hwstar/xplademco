@@ -29,6 +29,7 @@ typedef ConfigEntry_t * ConfigEntryPtr_t;
 struct	keyent{
 	uint32_t magic;
 	uint32_t hash;
+	unsigned linenum;
 	String key;
 	String value;
 	KeyEntryPtr_t prev;
@@ -40,6 +41,7 @@ struct	keyent{
 struct sectionent{
 	uint32_t magic;
 	uint32_t hash;
+	unsigned linenum;
 	String section;
 	KeyEntryPtr_t key_head;
 	KeyEntryPtr_t key_tail;
@@ -70,12 +72,15 @@ SectionEntryPtr_t confreadFindSection(ConfigEntryPtr_t ce, String section);
 String confreadGetSection(SectionEntryPtr_t se);
 SectionEntryPtr_t confreadGetFirstSection(ConfigEntryPtr_t ce);
 SectionEntryPtr_t confreadGetNextSection(SectionEntryPtr_t se);
+unsigned confreadSectionLineNum(SectionEntryPtr_t se);
 
 /* Key Functions */
 KeyEntryPtr_t confreadFindKey(SectionEntryPtr_t se, String key);
 String confreadGetKey(KeyEntryPtr_t ke);
 KeyEntryPtr_t confreadGetFirstKey(SectionEntryPtr_t se);
-KeyEntryPtr_t confreadGetNextKey(KeyEntryPtr_t se);
+KeyEntryPtr_t confreadGetNextKey(KeyEntryPtr_t ke);
+unsigned confreadKeyLineNum(KeyEntryPtr_t ke);
+
 
 /* Value functions */
 String confreadGetValue(KeyEntryPtr_t ke);

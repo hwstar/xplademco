@@ -6,7 +6,7 @@
  * 
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
+ * as published by the Free Software Foundation; either version 3
  * of the License, or (at your option) any later version.
  * 
  * This program is distributed in the hope that it will be useful,
@@ -90,7 +90,7 @@ static uint32_t hash(String key)
 * Else if dest is non-NULL, do not copy the stop character to the destination
 * and always terminate the destination with a NUL character. Return the
 * character the copy stopped on. In the case of no stop character
-* match, return a NUL.
+* match, return a nul.
 */
 
 static char copyuntil(String dest, String *srcp, int max_dest_len, String stopchrs){
@@ -102,11 +102,11 @@ static char copyuntil(String dest, String *srcp, int max_dest_len, String stopch
 
 	for(i = 0; i < max_dest_len - 1; i++){
 
-		/* If NUL at current src string pos, stop copy */
+		/* If nul at current src string pos, stop copy */
 		/* and point p to the NUL character in the stop char string */
 
 		if(**srcp == '\0'){
-			p = stopchrs + strlen(stopchrs); // Point to NUL in string
+			p = stopchrs + strlen(stopchrs); /* Point to NUL in string */
 			break;
 		}
 
@@ -135,7 +135,7 @@ static char copyuntil(String dest, String *srcp, int max_dest_len, String stopch
 	
 	if(dest)
 		*dest = 0;
-	return *p; // Return character which stopped copy
+	return *p; /* Return character which stopped copy */
 }
 
 /*
@@ -205,7 +205,7 @@ static int linescan(String *lp, String tokstring){
 			}
 			else{
 				debug(DEBUG_UNEXPECTED, "Section not closed off");
-				retval = TOK_ERR; // Section broken
+				retval = TOK_ERR; /* Section broken */
 			}
 			break;
 
@@ -295,6 +295,19 @@ SectionEntryPtr_t confreadGetNextSection(SectionEntryPtr_t se)
 }
 
 /*
+* Return the line number for the section entry
+*/
+
+unsigned confreadSectionLineNum(SectionEntryPtr_t se)
+{
+	if((se) || (se->magic != SE_MAGIC))
+		return 0;
+	return se->linenum;
+}
+
+
+
+/*
 * Return a pointer to the matching key in a section if it exists
 */
 
@@ -326,6 +339,17 @@ String confreadGetKey(KeyEntryPtr_t ke)
 	return ke->key;
 }
 
+
+/*
+* Return a line number from a key entry
+*/
+
+unsigned confreadKeyLineNum(KeyEntryPtr_t ke)
+{
+	if((ke) || (ke->magic != KE_MAGIC))
+		return 0;
+	return ke->linenum;
+}
 
 
 /*
@@ -399,6 +423,9 @@ Bool confReadValueBySectKeyAsUnsigned(ConfigEntryPtr_t ce, String section, Strin
 
 	return FALSE;
 }
+
+
+
 
 /*
 * Default error handler for confreadScan()
@@ -493,16 +520,16 @@ void confreadDebugDump(ConfigEntryPtr_t ce)
 	
 	while((se) && (se->magic == SE_MAGIC)){
 		if(se->section)
-			printf("**** Section: %s Hash: %08X ****\n", se->section, se->hash);
+			printf("**** Section: %s Hash: %08X Line Number: %d ****\n", se->section, se->hash, se->linenum);
 		else
-			printf("!!!! NULL Section string !!!!\n");
+			printf("!!!! NULL Section string on line number %d !!!!\n", se->linenum);
 
 		kv = se->key_head; /* Start at beginning of kv list and work forward */
 		while((kv) && (kv->magic == KE_MAGIC)){
 			if(kv->key)
-				printf("Key: %s Hash: %08X", kv->key, kv->hash);
+				printf("Key: %s Hash: %08X Line Number %d ", kv->key, kv->hash, kv->linenum);
 			else
-				printf("!! NULL Key");
+				printf("!! NULL Key on line number %d", kv->linenum);
 			if(kv->value)
 				printf(" Value: %s\n",kv->value);
 			else
@@ -616,6 +643,9 @@ ConfigEntryPtr_t confreadScan(String thePath, void (*error_callback)(int type, i
 				}
 				/* Hash the section */
 				se->hash = hash(se->section);
+
+				/* Record the line number */
+				se->linenum = linenum;
 	
 				/* Scan rest of line looking for a comment or a new line */
 
@@ -665,6 +695,9 @@ ConfigEntryPtr_t confreadScan(String thePath, void (*error_callback)(int type, i
 
 					/* Hash the key */
 					kv->hash = hash(kv->key);
+
+					/* Record the line number */
+					kv->linenum = linenum;
 				}
 
 				/* Next token had better be a value */
@@ -711,7 +744,7 @@ ConfigEntryPtr_t confreadScan(String thePath, void (*error_callback)(int type, i
 				}
 				break;
 			case TOK_ERR:
-				debug(DEBUG_EXPECTED, "TOK_ERR returned from linescan()");
+				debug(DEBUG_UNEXPECTED, "TOK_ERR returned from linescan()");
 				(*error_callback)(CRE_SYNTAX, linenum, NULL);
 				return NULL;
 
