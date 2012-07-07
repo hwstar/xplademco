@@ -36,7 +36,7 @@
 #include "notify.h"
 #include "confread.h"
 
-#define SHORT_OPTIONS "c:d:f:hi:l:np:s:v"
+#define SHORT_OPTIONS "c:d:f:hi:np:s:u:v"
 
 
 #define WS_SIZE 256
@@ -46,7 +46,7 @@
 #define DEF_CFG_FILE		"/etc/xplademco.conf"
 
 /* Config override flags */
-enum { CO_PID_FILE = 1, CO_COM_PORT = 2, CO_INSTANCE_ID= 4, CO_INTERFACE = 8, CO_LOG_FILE = 0x10 };
+enum { CO_PID_FILE = 1, CO_COM_PORT = 2, CO_INSTANCE_ID= 4, CO_INTERFACE = 8, CO_DEBUG_FILE = 0x10 };
 
 char *progName;
 int debugLvl = 0; 
@@ -63,7 +63,7 @@ static ConfigEntry_t *configEntry;
 
 static char comPort[WS_SIZE] = DEF_COM_PORT;
 static char interface[WS_SIZE] = "";
-static char logPath[WS_SIZE] = "";
+static char debugFile[WS_SIZE] = "";
 static char instanceID[WS_SIZE] = DEF_INSTANCE_ID;
 static char pidFile[WS_SIZE] = DEF_PID_FILE;
 static char configFile[WS_SIZE] = DEF_CFG_FILE;
@@ -74,11 +74,11 @@ static char configFile[WS_SIZE] = DEF_CFG_FILE;
 static struct option longOptions[] = {
   {"com-port", 1, 0, 'p'},
   {"config",1, 0, 'c'},
-  {"debug", 1, 0, 'd'},
+  {"debug-level", 1, 0, 'd'},
   {"help", 0, 0, 'h'},
   {"instance", 1, 0, 's'},
   {"interface", 1, 0, 'i'},
-  {"log", 1, 0, 'l'},
+  {"debug-file", 1, 0, 'u'},
   {"no-background", 0, 0, 'n'},
   {"pid-file", 0, 0, 'f'},
   {"version", 0, 0, 'v'},
@@ -268,16 +268,16 @@ void showHelp(void)
 	printf("Usage: %s [OPTION]...\n", progName);
 	printf("\n");
 	printf("  -c, --config-file PATH  Set the path to the config file\n");
-	printf("  -d, --debug LEVEL       Set the debug level, 0 is off, the\n");
+	printf("  -d, --debug-level LEVEL Set the debug level, 0 is off, the\n");
 	printf("                          compiled-in default is %d and the max\n", debugLvl);
 	printf("                          level allowed is %d\n", DEBUG_MAX);
 	printf("  -f, --pid-file PATH     Set new pid file path, default is: %s\n", pidFile);
 	printf("  -h, --help              Shows this\n");
 	printf("  -i, --interface NAME    Set the broadcast interface (e.g. eth0)\n");
-	printf("  -l, --log  PATH         Path name to debug log file when daemonized\n");
 	printf("  -n, --no-background     Do not fork into the background (useful for debugging)\n");
 	printf("  -p, --com-port PORT     Set the communications port (default is %s)\n", comPort);
 	printf("  -s, --instance ID       Set instance id. Default is %s", instanceID);
+	printf("  -u, --debug-file PATH    Path name to debug file when daemonized\n");
 	printf("  -v, --version           Display program version\n");
 	printf("\n");
  	printf("Report bugs to <%s>\n\n", EMAIL);
@@ -339,7 +339,7 @@ int main(int argc, char *argv[])
 			/* Was it a pid file switch? */
 			case 'f':
 				strncpy(pidFile, optarg, WS_SIZE - 1);
-				logPath[WS_SIZE - 1] = 0;
+				debugFile[WS_SIZE - 1] = 0;
 				debug(DEBUG_ACTION,"New pid file path is: %s", pidFile);
 				configOverride |= CO_PID_FILE;
 				break;
@@ -359,12 +359,12 @@ int main(int argc, char *argv[])
 
 				break;
 
-			case 'l':
-				/* Override log path*/
-				strncpy(logPath, optarg, WS_SIZE - 1);
-				logPath[WS_SIZE - 1] = 0;
-				debug(DEBUG_ACTION,"New log path is: %s", logPath);
-				configOverride |= CO_LOG_FILE;
+			case 'u':
+				/* Override debug path*/
+				strncpy(debugFile, optarg, WS_SIZE - 1);
+				debugFile[WS_SIZE - 1] = 0;
+				debug(DEBUG_ACTION,"New debug path is: %s", debugFile);
+				configOverride |= CO_DEBUG_FILE;
 				break;
 
 			/* Was it a no-backgrounding request? */
@@ -425,16 +425,23 @@ int main(int argc, char *argv[])
 		}	
 	}
 
-	/* Log file */
-	if(!(configOverride & CO_LOG_FILE)){
-		if((p = confreadValueBySectKey(configEntry, "general", "log-file"))){
-			strncpy(logPath, p, WS_SIZE);
-			logPath[WS_SIZE - 1] = 0;
+	/* Debug file */
+	if(!(configOverride & CO_DEBUG_FILE)){
+		if((p = confreadValueBySectKey(configEntry, "general", "debug-file"))){
+			strncpy(debugFile, p, WS_SIZE);
+			debugFile[WS_SIZE - 1] = 0;
 		}
 	
 	}
 
-
+	/* PID file */
+	if(!(configOverride & CO_PID_FILE)){
+		if((p = confreadValueBySectKey(configEntry, "general", "pid-file"))){
+			strncpy(pidFile, p, WS_SIZE);
+			pidFile[WS_SIZE - 1] = 0;
+		}
+	
+	}
 
 	/* Instance ID */
 	if(!(configOverride & CO_INSTANCE_ID)){
@@ -452,13 +459,6 @@ int main(int argc, char *argv[])
 			interface[WS_SIZE - 1] = 0;
 		}	
 	}
-
-	printf("interface = %s\n", interface);
-	exit(0);
-
-
-
-
 
 
 	/* Turn on library debugging for level 5 */
@@ -481,8 +481,8 @@ int main(int argc, char *argv[])
     		* the path to the logfile is defined
 		*/
 
-		if((debugLvl) && (logPath[0]))                          
-			notify_logpath(logPath);
+		if((debugLvl) && (debugFile[0]))                          
+			notify_logpath(debugFile);
 
 		/* Fork and exit the parent */
 
