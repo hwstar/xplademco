@@ -39,20 +39,30 @@
 #
 # Numeric zone to alpha zone mapping.
 # 
-# The numeric zone reported by the panel is on the left, and the alpha zone name goes on the right
+# The numeric zone reported by the panel is on the left, and the zone data goes on the right
 # A zone map is required, and xplademco will refuse to run without one. There are no defaults for
-# zones. Any zones not mapped will not be reported, so be sure you properly define *ALL* the zones in your system. 
+# zones. Any zones not mapped will not be reported, so be sure you properly map *ALL* the zones in your system. 
+#
+# Format:
+#
+# Zone_number = zone-Name,zone-type,alarm-type
+#
+# Where:
+#
+# zone-name is an alphanumeric zone name you assign for your zone
+# zone-type is one of: perimeter, interior, 24hour
+# alarm-type is one of: burglary, fire, flood, gas, other
 #
 # The zone map below is for guidance only. 
 #
 #[zone-map]
-#1 = fire
-#2 = front-door
-#3 = back-door
-#4 = garage
-#14 = hall-pir
-#15 = lvr-pir
-#16 = office-pir
+#1 = fire, 24hour, fire
+#2 = front-door, perimeter, burglary
+#3 = back-door, perimeter, burglary
+#4 = garage, perimeter, burglary
+#14 = hall-pir, interior, burglary
+#15 = lvr-pir, interior, burglary
+#16 = office-pir, interior, burglary
 #
 # End of Zone Section
 #
@@ -60,7 +70,7 @@
 #
 #
 # To optionally report zone alerts from a zone expander, map an expander address,channel on the left to a zone name on the right.
-# Trigger messages will be entered 
+# zoneinfo
 #
 #[exp-map]
 #7,1 = hall-pir

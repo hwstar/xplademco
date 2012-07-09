@@ -21,6 +21,16 @@
 *
 */
 
+/* Define these if not defined */
+
+#ifndef VERSION
+	#define VERSION "X.X.X"
+#endif
+
+#ifndef EMAIL
+	#define EMAIL "hwstar@rodgers.sdcoxmail.com"
+#endif
+
 #include "types.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,6 +55,33 @@
 #define DEF_PID_FILE		"/var/run/xplademco.pid"
 #define DEF_CFG_FILE		"/etc/xplademco.conf"
 
+#define MALLOC_ERROR	malloc_error(__FILE__,__LINE__)
+
+typedef struct state_bits stateBits_t;
+
+struct state_bits {
+	unsigned armed : 1;
+	unsigned alarm : 1;
+	unsigned acfail : 1;
+	unsigned lowbatt : 1;
+};
+
+
+typedef struct zone_map zoneMap_t;
+typedef zoneMap_t * zoneMapPtr_t;
+
+struct zone_map {
+	unsigned zone_num;
+	uint32_t zone_name_hash;
+	String zone_name;
+	String zone_type;
+	String alarm_type;
+	zoneMapPtr_t next;
+	zoneMapPtr_t prev;
+};
+	
+
+
 typedef struct {
 	const String ademco;
 	const String xpl;
@@ -55,13 +92,13 @@ typedef struct exp_map expMap_t;
 typedef expMap_t * expMapPtr_t;
 
 struct exp_map {
-	int addr;
-	int channel;
+	unsigned addr;
+	unsigned channel;
 	String zone;
+	zoneMapPtr_t zone_entry;
 	expMapPtr_t next;
 	expMapPtr_t prev;
 };
-
 	
 
 
@@ -95,6 +132,9 @@ int debugLvl = 0;
 Bool noBackground = FALSE;
 uint32_t pollRate = 5;
 uint32_t configOverride = 0;
+unsigned zoneCount = 0;
+Bool alarmLRR = FALSE;
+stateBits_t stateBits = {0,0};
 
 static Bool lineReceived = FALSE;
 static seriostuff_t *serioStuff = NULL;
@@ -103,6 +143,8 @@ static xPL_MessagePtr xplStatusMessage = NULL;
 static xPL_MessagePtr xplEventTriggerMessage = NULL;
 static xPL_MessagePtr xplZoneTriggerMessage = NULL;
 static ConfigEntry_t *configEntry = NULL;
+static zoneMapPtr_t zoneMapHead = NULL;
+static zoneMapPtr_t zoneMapTail = NULL;
 static expMapPtr_t expMapHead = NULL;
 static expMapPtr_t expMapTail = NULL;
 
@@ -128,6 +170,8 @@ static const String const basicCommandList[] = {
 static const String const requestCommandList[] = {
 	"gateinfo",
 	"zonelist",
+	"zoneinfo",
+	"gatestat",
 	NULL
 };
 
@@ -146,6 +190,47 @@ static struct option longOptions[] = {
   {"version", 0, 0, 'v'},
   {0, 0, 0, 0}
 };
+
+/* 
+ * Allocate a memory block and zero it out
+ */
+
+static void *mallocz(size_t size)
+{
+	void *m = malloc(size);
+	if(m)
+		memset(m, 0, size);
+	return m;
+}
+ 
+/*
+ * Malloc error handler
+ */
+ 
+static void malloc_error(String file, int line)
+{
+	fatal("Out of memory in file %s, at line %d");
+}
+
+/*
+ * Convert a string to an unsigned int with bounds checking
+ */
+
+static Bool str2uns(String s, unsigned *num, unsigned min, unsigned max)
+{
+		long val;
+		if((!num) || (!s)){
+			debug(DEBUG_UNEXPECTED, "NULL pointer passed to str2uns");
+			return FALSE;
+		}
+		val = strtol(s, NULL, 0);
+		if((val < min) || (val > max))
+			return FALSE;
+		*num = (unsigned) val;
+		return TRUE;
+}
+
+
 
 /* 
  * Get the pid from a pidfile.  Returns the pid or -1 if it couldn't get the
@@ -263,7 +348,7 @@ static int splitString(const String src, String *list, char sep, int limit)
 			return 0;
 
 		if(!(srcCopy = strdup(src)))
-			return 0;
+			MALLOC_ERROR;
 
 		for(i = 0, q = srcCopy; (i < limit) && (p = strchr(q, sep)); i++, q = p + 1){
 			*p = 0;
@@ -277,6 +362,21 @@ static int splitString(const String src, String *list, char sep, int limit)
 		return i;
 }
 
+/*
+ * Do a zone lookup
+ */
+ 
+zoneMapPtr_t zoneLookup(String s)
+{
+		uint32_t hash = confreadHash(s);
+		zoneMapPtr_t zm = zoneMapHead;
+		for(; zm; zm = zm->next){
+			if((zm->zone_name_hash == hash) && (!strcmp(s, zm->zone_name)))
+				break;
+		}
+		return zm;
+}
+
 
 /*
 * Return Gateway info 
@@ -285,9 +385,8 @@ static int splitString(const String src, String *list, char sep, int limit)
 static void doGateInfo()
 {
 	
-	unsigned zoneCount = confreadGetNumEntriesInSect(configEntry, "zone-map");
 	char ws[20];
-
+	
 	snprintf(ws, 20, "%u", zoneCount);
 
 	xPL_setSchema(xplStatusMessage, "security", "gateinfo");
@@ -302,7 +401,7 @@ static void doGateInfo()
 	xPL_setMessageNamedValue(xplStatusMessage, "zone-count", ws);
 
 	if(!xPL_sendMessage(xplStatusMessage))
-		debug(DEBUG_UNEXPECTED, "request.gateinfo status transmission failed");
+		debug(DEBUG_UNEXPECTED, "request.gateinfo transmission failed");
 }
 
 /*
@@ -311,17 +410,70 @@ static void doGateInfo()
 
 static void doZoneList()
 {
-	KeyEntryPtr_t e;
+	zoneMapPtr_t zm;
 
 	xPL_setSchema(xplStatusMessage, "security", "zonelist");
 
 	xPL_clearMessageNamedValues(xplStatusMessage);
 
-	for(e = confreadGetFirstKeyBySection(configEntry, "zone-map"); e; e = confreadGetNextKey(e)){
-		xPL_addMessageNamedValue(xplStatusMessage, "zone-list", confreadGetValue(e));
+	for(zm = zoneMapHead; zm; zm = zm->next){
+		xPL_addMessageNamedValue(xplStatusMessage, "zone-list", zm->zone_name);
 	}
 	if(!xPL_sendMessage(xplStatusMessage))
-		debug(DEBUG_UNEXPECTED, "request.zonelist status transmission failed");
+		debug(DEBUG_UNEXPECTED, "request.zonelist transmission failed");
+}
+
+
+/*
+ * Return zone info for a specific zone
+ */
+
+static void doZoneInfo(xPL_MessagePtr theMessage)
+{
+		const String zone = xPL_getMessageNamedValue(theMessage, "zone");
+		zoneMapPtr_t zm;
+		if(zone && (zm = zoneLookup(zone))){
+			xPL_setSchema(xplStatusMessage, "security", "zoneinfo");
+			
+			/* Clear the message */
+			xPL_clearMessageNamedValues(xplStatusMessage);
+			
+			/* Fill in the data */
+			xPL_addMessageNamedValue(xplStatusMessage, "id", zone);
+			xPL_addMessageNamedValue(xplStatusMessage, "zone-type", zm->zone_type);
+			xPL_addMessageNamedValue(xplStatusMessage, "alarm-type", zm->alarm_type);
+			xPL_addMessageNamedValue(xplStatusMessage, "area-count","0");
+			/* Send the message */
+			if(!xPL_sendMessage(xplStatusMessage))
+				debug(DEBUG_UNEXPECTED, "request.zoneinfo transmission failed");
+		}
+}
+
+/*
+ * Return gateway status
+ */
+
+static void doGateStat()
+{
+		String status = "disarmed";
+		
+		xPL_setSchema(xplStatusMessage, "security", "gatestat");
+		
+		/* Clear the message */
+		xPL_clearMessageNamedValues(xplStatusMessage);
+		
+		/* Fill in the data */
+		xPL_addMessageNamedValue(xplStatusMessage, "ac-fail", stateBits.acfail ? "true" : "false");
+		xPL_addMessageNamedValue(xplStatusMessage, "low-battery", stateBits.lowbatt ? "true" : "false");
+		if(stateBits.alarm)
+			status = "alarm";
+		else if(stateBits.armed)
+			status = "armed";
+		xPL_addMessageNamedValue(xplStatusMessage, "status", status);		
+		
+		/* Send the message */
+		if(!xPL_sendMessage(xplStatusMessage))
+			debug(DEBUG_UNEXPECTED, "request.gatestat transmission failed");
 }
 
 
@@ -343,14 +495,15 @@ static void xPLListener(xPL_MessagePtr theMessage, xPL_ObjectPtr userValue)
 			const String type = xPL_getSchemaType(theMessage);
 			const String class = xPL_getSchemaClass(theMessage);
 			const String command =  xPL_getMessageNamedValue(theMessage, "command");
+		
 			
 			
 			debug(DEBUG_EXPECTED,"Non-broadcast message received: type=%s, class=%s", type, class);
 			
 			/* Allocate a working string */
 
-			if(!(ws = malloc(WS_SIZE)))
-				fatal("Cannot allocate work string in xPLListener()");
+			if(!(ws = mallocz(WS_SIZE)))
+				MALLOC_ERROR;
 			ws[0] = 0;
 			if(!strcmp(class,"security")){
 				if(!strcmp(type, "basic")){ /* Basic command schema */
@@ -385,13 +538,12 @@ static void xPLListener(xPL_MessagePtr theMessage, xPL_ObjectPtr userValue)
 								doZoneList();
 								break;
 
-							case 2: /* */
+							case 2: /* zoneinfo */
+								doZoneInfo(theMessage);
 								break;
 
-							case 3: /* */
-								break;
-
-							case 4: /* */
+							case 3: /* gatestat */
+								doGateStat();
 								break;
 
 							default:
@@ -424,6 +576,12 @@ static void doLRRTrigger(String line)
 
 
 	if(3 == splitString(line, plist, ',', 3)){
+		
+		/* If OPEN or CANCEL, clear the alarmLRR flag */
+		if((!strcmp(plist[2], "OPEN")) || (!strcmp(plist[2], "CANCEL")))
+			alarmLRR = FALSE;
+			
+		/* Try to find a match to an xPL equicalent reporting state */
 		for(i = 0; lrrNameMap[i].ademco; i++){
 			if(!strcmp(lrrNameMap[i].ademco, plist[2]))
 				break;
@@ -432,9 +590,12 @@ static void doLRRTrigger(String line)
 			xPL_clearMessageNamedValues(xplEventTriggerMessage);
 			xPL_addMessageNamedValue(xplEventTriggerMessage, "event", lrrNameMap[i].xpl);
 			xPL_sendMessage(xplEventTriggerMessage);
+		
+			/* Update the alarmLRR bit which reflects the status of all the alarms */
+			if(!strcmp(lrrNameMap[i].xpl, "alarm"))
+					alarmLRR = TRUE;
 		}
 	}
-
 	if(plist[0])
 		free(plist[0]);
 }
@@ -451,7 +612,10 @@ static void doEXPTrigger(String line)
 	
 	plist[0] = NULL;
 	
-
+	/* Do not send zone state changes if armed */
+	if(stateBits.armed)
+		return;
+		
 	/* Split the message */
 	if(3 == splitString(line, plist, ',', 3)){
 		for(e = expMapHead; e ; e = e->next){
@@ -502,6 +666,32 @@ static void serioHandler(int fd, int revents, int userValue)
 				confreadStringCopy(oldStatBits, newStatBits, 21);
 				debug(DEBUG_EXPECTED,"New Status bits: %s", newStatBits);
 			}
+			
+			/* If anything is armed */
+			if((newStatBits[1] == '1') || (newStatBits[2] == '1') ||
+			   (newStatBits[12] == '1') || (newStatBits[15] == '1'))
+				stateBits.armed = 1;
+			else
+				stateBits.armed = 0;
+				
+			/* If any alarm including one sent from LRR */
+			if((newStatBits[10] == '1') || (newStatBits[13] == '1') || alarmLRR)
+				stateBits.alarm = 1;
+			else
+				stateBits.alarm = 0;
+			
+			/* If AC fail */	
+			if(newStatBits[7] == '0')
+				stateBits.acfail = 1;
+			else
+				stateBits.acfail = 0;
+			
+			/* If low battery */
+			if(newStatBits[11] == '1')
+					stateBits.lowbatt = 1;
+			else
+					stateBits.lowbatt = 0;
+				
 		}
 		else if(line[0] == '!'){ /* Other events */
 			String p = line + 5;
@@ -593,6 +783,7 @@ int main(int argc, char *argv[])
 	int optchar;
 	String p;
 	KeyEntryPtr_t e;
+	zoneMapPtr_t zm;
 
 	/* Set the program name */
 	progName=argv[0];
@@ -705,10 +896,6 @@ int main(int argc, char *argv[])
 	if(!(configEntry =confreadScan(configFile, NULL)))
 		exit(1);
 
-	/* Check for a zone map */
-	if(!confreadGetFirstKeyBySection(configEntry, "zone-map"))
-		fatal("A valid zone-map section and at least one entry must be defined in the config file"); 
-
 	/* Parse the general section */
 
 	/* Com port */
@@ -749,6 +936,50 @@ int main(int argc, char *argv[])
 		}	
 	}
 
+	/* Build Zone Map */
+	
+	if(!(e = confreadGetFirstKeyBySection(configEntry, "zone-map")))
+		fatal("A valid zone-map section and at least one entry must be defined in the config file");
+	for(; e; e = confreadGetNextKey(e)){
+		String plist[3];
+		const String key = confreadGetKey(e);
+		const String value = confreadGetValue(e);
+		/* Allocate a zone struct */
+		if(!(zm = mallocz(sizeof(zoneMap_t))))
+			MALLOC_ERROR;
+			
+		/* Get the zone number */
+		if(!str2uns(key, &zm->zone_num, 1, 99))
+			syntax_error(e, configFile,"invalid zone number");
+			
+		/* Get the parameters */
+		if(3 != splitString(value, plist, ',', 3))
+			syntax_error(e, configFile, "3 parameters required");
+		if(!(zm->zone_name = strdup(plist[0])))
+			MALLOC_ERROR;
+		if(!(zm->zone_type = strdup(plist[1])))
+			MALLOC_ERROR;
+		if(!(zm->alarm_type = strdup(plist[2])))
+			MALLOC_ERROR;
+			
+		/* Hash the zone name */
+		zm->zone_name_hash = confreadHash(zm->zone_name);
+		
+			
+		/* Free the split string */
+		free(plist[0]);
+		
+		/* Insert the entry into the zone list */
+		if(!zoneMapHead)
+			zoneMapHead = zoneMapTail = zm;
+		else{
+			zm->prev = zoneMapTail;
+			zoneMapTail->next = zm;
+			zoneMapTail = zm;
+		}
+		zoneCount++;
+	}
+
 	/* EXP zone mapping */
 
 	for(e =  confreadGetFirstKeyBySection(configEntry, "exp-map"); e; e = confreadGetNextKey(e)){
@@ -756,7 +987,6 @@ int main(int argc, char *argv[])
 		const String keyString = confreadGetKey(e);
 		const String zone = confreadGetValue(e);
 		String plist[3];
-		long val;
 		unsigned expaddr, expchannel;
 
 		/* Check the key and zone strings */
@@ -770,29 +1000,33 @@ int main(int argc, char *argv[])
 			syntax_error(e, configFile, "left hand side needs 2 numbers separated by a comma");
 
 		/* Convert and check address */
-		val = strtol(plist[0], NULL, 0);
-		if((val < 1) || (val > 99))
-			syntax_error(e, configFile, "address is limited from 1 - 99");
-		expaddr = (unsigned) val;
+		if(!str2uns(plist[0], &expaddr, 1, 99))
+			syntax_error(e, configFile,"address is limited from 1 - 99");
+
 
 		/* Convert and check channel */
-		val = strtol(plist[1], NULL, 0);
-		if((val < 1) || (val > 99))
-			syntax_error(e, configFile, "channel is limited from 1 - 8");
-		expchannel = (unsigned) val;
+		if(!str2uns(plist[0], &expchannel, 1, 99))
+			syntax_error(e, configFile,"channel is limited from 1 - 99");
+			
 
 		/* debug(DEBUG_ACTION, "Address: %u, channel: %u, zone: %s", expaddr, expchannel, zone); */
+		
+		/* Look up zone to ensure it is defined */
+		
+		if(!(zm = zoneLookup(zone)))
+			syntax_error(e, configFile, "Zone must be defined in zone-map section");
+		
 
 		/* Get memory for entry */
-		if(!(emp = malloc(sizeof(expMap_t))))
-			fatal("Out of memory in: %s, line %d", __FILE__, __LINE__);
+		if(!(emp = mallocz(sizeof(expMap_t))))
+			MALLOC_ERROR;
 
 		/* Initialize entry */
-		emp->next = emp->prev = NULL;
+		emp->zone_entry = zm;
 		emp->addr = expaddr;
 		emp->channel = expchannel;
 		if(!(emp->zone = strdup(zone)))
-			fatal("Out of memory in: %s, line %d", __FILE__, __LINE__);
+			MALLOC_ERROR;
 
 		/* Insert into list */
 		if(!expMapHead){

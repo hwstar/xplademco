@@ -1,0 +1,25 @@
+xpladamco
+
+
+xplademco is an xPL to Ademco gateway daemon which uses the Nutech ad2usb adapter to bridge an Ademco alarm panel to xPL.
+
+The software attempts to follow the xPL security schema documented at xplrooject.org.uk, but due to limitations imposed by the data
+sent from the Ademco panel, not all features are supported in the security schema.
+
+Copyright 2012 Stephen A. Rodgers, All rights reserved.
+
+This software is licensed under the GPL version 3.0.
+
+xplademco comes with ABSOLUTELY NO WARRANTY; for details see the
+GNU General Public License.  This is free software, and you are welcome
+to redistribute it under certain conditions; see the GNU General Public License
+version 3.0 for details.
+
+********************************************************BIG FAT WARNING************************************************************
+
+Do not use this software in any application where failure of this software to perform would put life and or
+property at  risk.  Please refer to the warranty disclaimer above. You have been warned.
+
+***********************************************************************************************************************************
+
+

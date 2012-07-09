@@ -98,6 +98,7 @@ void confReadDefErrorHandler( int etype, int linenum, const String info);
 /* Utility Functions */
 
 String confreadStringCopy(String dest, const String src, int charsToCopy);
+uint32_t confreadHash(const String key);
 
 /* Debugging functions */
 void confreadDebugDump(ConfigEntryPtr_t ce);

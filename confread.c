@@ -54,7 +54,6 @@ enum { TOK_ERR = -1, TOK_NL=0, TOK_SECTION, TOK_KEY, TOK_VALUE, TOK_COMMENT};
 
 /* Internal functions */
 
-static uint32_t hash(const String key);
 static int linescan(String *lp, String tokstring);
 static String removespctab(String line);
 static char copyuntil(String dest, String *srcp, int max_dest_len, const String stopchrs);
@@ -63,7 +62,7 @@ static char copyuntil(String dest, String *srcp, int max_dest_len, const String 
 * Hash a string
 */
 
-static uint32_t hash(const String key)
+uint32_t confreadHash(const String key)
 {
 	int len = strlen(key);
 	register uint32_t hash, i;
@@ -267,7 +266,7 @@ SectionEntryPtr_t confreadFindSection(ConfigEntryPtr_t ce, const String section)
 		return NULL;
 
 	/* Hash the section string passed in */
-	sh = hash(section);
+	sh = confreadHash(section);
 	for(se = ce->head; (se); se = se->next){ /* Traverse section list */
 		/* Compare hashes, and if they match, compare strings */
 		if((sh == se->hash) && (!strcmp(se->section, section))){
@@ -337,7 +336,7 @@ KeyEntryPtr_t confreadFindKey(SectionEntryPtr_t se, const String key)
 		return NULL;
 
 	/* Hash the section string passed in */
-	kh = hash(key);
+	kh = confreadHash(key);
 	for(ke = se->key_head; (ke); ke = ke->next){ /* Traverse key list */
 		/* Compare hashes, and if they match, compare strings */
 		if((kh == ke->hash) && (!strcmp(ke->key, key)))
@@ -692,7 +691,7 @@ ConfigEntryPtr_t confreadScan(String thePath, void (*error_callback)(int type, i
 					return NULL;
 				}
 				/* Hash the section */
-				se->hash = hash(se->section);
+				se->hash = confreadHash(se->section);
 
 				/* Record the line number */
 				se->linenum = linenum;
@@ -744,7 +743,7 @@ ConfigEntryPtr_t confreadScan(String thePath, void (*error_callback)(int type, i
 					}
 
 					/* Hash the key */
-					kv->hash = hash(kv->key);
+					kv->hash = confreadHash(kv->key);
 
 					/* Record the line number */
 					kv->linenum = linenum;
