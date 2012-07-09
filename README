@@ -3,7 +3,7 @@ xpladamco
 
 xplademco is an xPL to Ademco gateway daemon which uses the Nutech ad2usb adapter to bridge an Ademco alarm panel to xPL.
 
-The software attempts to follow the xPL security schema documented at xplrooject.org.uk, but due to limitations imposed by the data
+The software attempts to follow the xPL security schema documented at xplproject.org.uk, but due to limitations imposed by the data
 sent from the Ademco panel, not all features are supported in the security schema.
 
 Copyright 2012 Stephen A. Rodgers, All rights reserved.
