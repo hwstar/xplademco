@@ -42,6 +42,7 @@ struct sectionent{
 	uint32_t magic;
 	uint32_t hash;
 	unsigned linenum;
+	unsigned entry_count;
 	String section;
 	KeyEntryPtr_t key_head;
 	KeyEntryPtr_t key_tail;
@@ -82,6 +83,8 @@ KeyEntryPtr_t confreadGetFirstKey(SectionEntryPtr_t se);
 KeyEntryPtr_t confreadGetFirstKeyBySection(ConfigEntryPtr_t ce, const String section);
 KeyEntryPtr_t confreadGetNextKey(KeyEntryPtr_t ke);
 unsigned confreadKeyLineNum(KeyEntryPtr_t ke);
+unsigned confreadGetNumEntriesInSect(ConfigEntryPtr_t ce, const String section);
+
 
 
 /* Value functions */

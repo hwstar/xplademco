@@ -116,6 +116,21 @@ static char configFile[WS_SIZE] = DEF_CFG_FILE;
 
 
 
+/* Basic command list */
+
+static const String const basicCommandList[] = {
+	NULL
+};
+
+
+/* Request command list */
+
+static const String const requestCommandList[] = {
+	"gateinfo",
+	"zonelist",
+	NULL
+};
+
 /* Commandline options. */
 
 static struct option longOptions[] = {
@@ -212,6 +227,20 @@ static void shutdownHandler(int onSignal)
 	exit(0);
 }
 
+/*
+* Match a command from a NULL-terminated list, return index to list entry
+*/
+
+static int matchCommand(const String const *commandList, const String const command)
+{
+	int i;
+
+	for(i = 0; commandList[i]; i++){
+		if(!strcmp(command, commandList[i]))
+			break;
+	}
+	return i;	
+}
 
 /*
 * Split string into pieces
@@ -249,6 +278,53 @@ static int splitString(const String src, String *list, char sep, int limit)
 }
 
 
+/*
+* Return Gateway info 
+*/
+
+static void doGateInfo()
+{
+	
+	unsigned zoneCount = confreadGetNumEntriesInSect(configEntry, "zone-map");
+	char ws[20];
+
+	snprintf(ws, 20, "%u", zoneCount);
+
+	xPL_setSchema(xplStatusMessage, "security", "gateinfo");
+
+	xPL_clearMessageNamedValues(xplStatusMessage);
+
+	xPL_setMessageNamedValue(xplStatusMessage, "protocol", "ECP");
+	xPL_setMessageNamedValue(xplStatusMessage, "description", "ad2usb to xPL bridge");
+	xPL_setMessageNamedValue(xplStatusMessage, "version", VERSION);
+	xPL_setMessageNamedValue(xplStatusMessage, "author", "Stephen A. Rodgers");
+	xPL_setMessageNamedValue(xplStatusMessage, "info-url", "http://xpl.ohnosec.org");
+	xPL_setMessageNamedValue(xplStatusMessage, "zone-count", ws);
+
+	if(!xPL_sendMessage(xplStatusMessage))
+		debug(DEBUG_UNEXPECTED, "request.gateinfo status transmission failed");
+}
+
+/*
+* Return list of zones, one per name-value pair
+*/
+
+static void doZoneList()
+{
+	KeyEntryPtr_t e;
+
+	xPL_setSchema(xplStatusMessage, "security", "zonelist");
+
+	xPL_clearMessageNamedValues(xplStatusMessage);
+
+	for(e = confreadGetFirstKeyBySection(configEntry, "zone-map"); e; e = confreadGetNextKey(e)){
+		xPL_addMessageNamedValue(xplStatusMessage, "zone-list", confreadGetValue(e));
+	}
+	if(!xPL_sendMessage(xplStatusMessage))
+		debug(DEBUG_UNEXPECTED, "request.zonelist status transmission failed");
+}
+
+
 
 /*
 * Our Listener 
@@ -264,17 +340,67 @@ static void xPLListener(xPL_MessagePtr theMessage, xPL_ObjectPtr userValue)
 
 	if(!xPL_isBroadcastMessage(theMessage)){ /* If not a broadcast message */
 		if(xPL_MESSAGE_COMMAND == xPL_getMessageType(theMessage)){ /* If the message is a command */
-			const String const type = xPL_getSchemaType(theMessage);
-			const String const class = xPL_getSchemaClass(theMessage);
+			const String type = xPL_getSchemaType(theMessage);
+			const String class = xPL_getSchemaClass(theMessage);
+			const String command =  xPL_getMessageNamedValue(theMessage, "command");
+			
 			
 			debug(DEBUG_EXPECTED,"Non-broadcast message received: type=%s, class=%s", type, class);
 			
 			/* Allocate a working string */
 
 			if(!(ws = malloc(WS_SIZE)))
-				fatal("Cannot allocate work string in xPLListener");
+				fatal("Cannot allocate work string in xPLListener()");
 			ws[0] = 0;
+			if(!strcmp(class,"security")){
+				if(!strcmp(type, "basic")){ /* Basic command schema */
+					if(command){
+						switch(matchCommand(basicCommandList, command)){
+							case 0: /*  */
+								break;
 
+							case 1: /* */
+								break;
+
+							case 2: /* */
+								break;
+
+							case 3: /* */
+								break;
+					
+							default:
+								break;
+						}
+					}
+				}
+				else if(!strcmp(type, "request")){ /* Request command schema */
+					if(command){
+						switch(matchCommand(requestCommandList, command)){
+
+							case 0: /* gateinfo */
+								doGateInfo();
+								break;
+
+							case 1: /* zonelist */
+								doZoneList();
+								break;
+
+							case 2: /* */
+								break;
+
+							case 3: /* */
+								break;
+
+							case 4: /* */
+								break;
+
+							default:
+								break;
+						}
+								
+					}
+				}
+			}
 			free(ws);
 		}
 

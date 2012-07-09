@@ -8,17 +8,18 @@
 #
 # For this section, the defaults are shown commented out
 #
-# Path to com device with ad2usb connected to it. Udev or dev/serial should be used to ensure the the com port device name remains
+# Path to com device with ad2usb connected to it. Udev or /dev/serial should be used to ensure the the com port device name remains
 # the same across power cycles.
 #
 #com-port = /dev/tty-ademco
 #
-# Path to debuf file when daemonized. No debug file is specified by default
+# Path to debug file when daemonized. No debug file is specified by default
 #
 #debug-file =
 #
 # The pid file is used to detect other instances of the program running and abort if that is the case. If running as non-root, you'll need to
 # specify a different writable directory where the pid file can be stored.
+#
 #pid-file = /var/run/xplademco.pid 
 #
 # The instance-id us used to distinguish this gateway from any other running on the network. 
@@ -29,6 +30,7 @@
 #
 # The interface option is used when the gateway is running on a system with multiple network adapters
 # No interface is specified by default. Most setups will not need to specify this.
+#
 #interface =
 #
 # End of General Section

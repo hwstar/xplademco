@@ -434,6 +434,20 @@ KeyEntryPtr_t confreadGetFirstKeyBySection(ConfigEntryPtr_t ce, const String sec
 }
 
 /*
+* Return a count of the number of entries in a section
+*/
+
+unsigned confreadGetNumEntriesInSect(ConfigEntryPtr_t ce, const String section)
+{
+	SectionEntryPtr_t se = confreadFindSection(ce, section);
+	if(se)
+		return se->entry_count;
+	else
+		return 0;
+}
+
+
+/*
 * Find a value by section and key
 */
 
@@ -747,6 +761,8 @@ ConfigEntryPtr_t confreadScan(String thePath, void (*error_callback)(int type, i
 								(*error_callback)(CRE_MALLOC, __LINE__, NULL);
 								return NULL;
 							}
+							/* Count the new entry */
+							se->entry_count++;
 							/* Insert new key/value into list in current section */
 							if(!se->key_head){
 								se->key_head = kv; /* First entry */
