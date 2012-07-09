@@ -270,8 +270,9 @@ SectionEntryPtr_t confreadFindSection(ConfigEntryPtr_t ce, const String section)
 	sh = hash(section);
 	for(se = ce->head; (se); se = se->next){ /* Traverse section list */
 		/* Compare hashes, and if they match, compare strings */
-		if((sh == se->hash) && (!strcmp(se->section, section)))
+		if((sh == se->hash) && (!strcmp(se->section, section))){
 			return se;
+		}
 	}
 	return NULL; /* No match found */
 }
@@ -294,7 +295,7 @@ const String confreadGetSection(SectionEntryPtr_t se)
 
 SectionEntryPtr_t confreadGetFirstSection(ConfigEntryPtr_t ce)
 {
-	if((ce) || (ce->magic != CE_MAGIC) || (!ce->head))
+	if((!ce) || (ce->magic != CE_MAGIC) || (!ce->head))
 		return NULL;
 	return ce->head;
 }
@@ -305,7 +306,7 @@ SectionEntryPtr_t confreadGetFirstSection(ConfigEntryPtr_t ce)
 
 SectionEntryPtr_t confreadGetNextSection(SectionEntryPtr_t se)
 {
-	if((se) || (se->magic != SE_MAGIC) || (!se->next))
+	if((!se) || (se->magic != SE_MAGIC) || (!se->next))
 		return NULL;
 	return se->next;
 }
@@ -316,7 +317,7 @@ SectionEntryPtr_t confreadGetNextSection(SectionEntryPtr_t se)
 
 unsigned confreadSectionLineNum(SectionEntryPtr_t se)
 {
-	if((se) || (se->magic != SE_MAGIC))
+	if((!se) || (se->magic != SE_MAGIC))
 		return 0;
 	return se->linenum;
 }
@@ -362,7 +363,7 @@ const String confreadGetKey(KeyEntryPtr_t ke)
 
 unsigned confreadKeyLineNum(KeyEntryPtr_t ke)
 {
-	if((ke) || (ke->magic != KE_MAGIC))
+	if((!ke) || (ke->magic != KE_MAGIC))
 		return 0;
 	return ke->linenum;
 }
@@ -374,8 +375,10 @@ unsigned confreadKeyLineNum(KeyEntryPtr_t ke)
 
 KeyEntryPtr_t confreadGetFirstKey(SectionEntryPtr_t se)
 {
-	if((se) || (se->magic != SE_MAGIC) || (!se->key_head))
+
+	if((!se) || (se->magic != SE_MAGIC) || (!se->key_head))
 		return NULL;
+
 	return se->key_head;
 }
 
@@ -385,7 +388,7 @@ KeyEntryPtr_t confreadGetFirstKey(SectionEntryPtr_t se)
 
 KeyEntryPtr_t confreadGetNextKey(KeyEntryPtr_t ke)
 {
-	if((ke) || (ke->magic != KE_MAGIC) || (!ke->next))
+	if((!ke) || (ke->magic != KE_MAGIC) || (!ke->next))
 		return NULL;
 	return ke->next;
 }
@@ -404,20 +407,39 @@ const String confreadGetValue(KeyEntryPtr_t ke)
 }
 
 /*
-* Find a value by section and key
+* Return key entry by section and key
 */
 
-const String confreadValueBySectKey(ConfigEntryPtr_t ce, const String section, const String key)
+
+KeyEntryPtr_t confreadKeyEntryBySectKey(ConfigEntryPtr_t ce, const String section, const String key)
 {
 	SectionEntryPtr_t se;
-	KeyEntryPtr_t ke;
 
 	if((!section) || (!key))
 		return NULL;
 
  	se = confreadFindSection(ce, section);
-	ke = confreadFindKey(se, key);
+	return confreadFindKey(se, key);
 
+}
+
+/*
+* Return first Key in section
+*/
+
+KeyEntryPtr_t confreadGetFirstKeyBySection(ConfigEntryPtr_t ce, const String section)
+{
+	SectionEntryPtr_t se = confreadFindSection(ce, section);
+	return confreadGetFirstKey(se);
+}
+
+/*
+* Find a value by section and key
+*/
+
+const String confreadValueBySectKey(ConfigEntryPtr_t ce, const String section, const String key)
+{
+	KeyEntryPtr_t ke = confreadKeyEntryBySectKey(ce, section, key);
 	return confreadGetValue(ke);
 
 }
@@ -439,115 +461,6 @@ Bool confReadValueBySectKeyAsUnsigned(ConfigEntryPtr_t ce, const String section,
 
 	return FALSE;
 }
-
-
-/* 
-* split args function
-*
-* Input string is not modified.
-* List should contain one more entry than the limit as the end is NULL terminated.
-* List entries are malloc'd and will need to be freed when no longer needed.
-* Return count of arguments found or 
-* return -1 if memory could not be allocated.
-*/
-
-int confreadSplitArgs(String string, char sep, String *list, int limit)
-{
-	String start = NULL;
-	int argc;
-	short i, j = 0, len;
-	short state = 0;
-	short done = FALSE;
-	
-	debug(DEBUG_ACTION,"split_args() string: %s, limit: %d", string, limit);
-
-
-	for(i = 0, *list = NULL, argc = 0; !done;){
-		switch(state){
-			case 0: // Lead in
-				if(!string[i]){
-					done = TRUE;
-					continue;
-				}
-				if(string[i] == ' '){ /* Ignore white space */
-					i++;
-					continue;
-				}
-				else if(string[i] == sep){ /* Ignore Leading sep */
-					i++;
-					continue;
-				}
-				start = string + i; 
-				j = i;
-				state = 1; /* found a new string */
-				break;
-
-			case 1: /* New string */
-				if((string[i] == ' ') || (string[i] == sep) || (!string[i])){
-					state = 2; /* found the end of a string */
-					continue;
-				}
-				i++;
-				break;
-		
-			case 2: /* End of a string */
-				len = i - j;	
-				if(!(*list = malloc(len + 1)))
-					return -1; /* Can't allocate memory */
-				confreadStringCopy(*list, start, len);
-				list++;
-				*list = NULL; // Identify the current end of the list with a NULL
-				argc++;
-				if((argc >= limit)){
-					done = TRUE;
-					continue;
-				}
-				state = 3;
-				break;
-	
-			case 3: /* Move past white space to next delimiter plus 1 */
-				if(!string[i]){
-					done = TRUE; /* Nothing more to do */
-					continue;
-				}
-				else if(string[i] == ' '){
-					i++; /* Skip white space */
-					continue;
-				}
-				else if(string[i] == sep){ /* Found sep */
-					i++;
-					state = 4;
-				}
-				else
-					i++;
-				break;
-
-			case 4: /* Remove any white space before another string */
-				if(!string[i]){
-					done = TRUE;
-					continue;
-				}
-				if((string[i] == ' ') || (string[i] == sep)){
-					i++;
-					continue;
-				}
-				else{		
-					start = string + i;
-					j = i;
-					state = 1;
-				}
-				break;
-	
-			default:
-				state = 0;
-				break;
-		}
-	}
-	
-	debug(DEBUG_EXPECTED," split_args() argc: %d", argc);
-	return argc;
-}
-
 
 
 /*
@@ -890,6 +803,5 @@ ConfigEntryPtr_t confreadScan(String thePath, void (*error_callback)(int type, i
 		fclose(conf_file);
 	return ce;
 }
-
 
 

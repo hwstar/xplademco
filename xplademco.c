@@ -45,8 +45,50 @@
 #define DEF_PID_FILE		"/var/run/xplademco.pid"
 #define DEF_CFG_FILE		"/etc/xplademco.conf"
 
+typedef struct {
+	const String ademco;
+	const String xpl;
+} lrrNameMap_t;
+
+
+typedef struct exp_map expMap_t;
+typedef expMap_t * expMapPtr_t;
+
+struct exp_map {
+	int addr;
+	int channel;
+	String zone;
+	expMapPtr_t next;
+	expMapPtr_t prev;
+};
+
+	
+
+
+
 /* Config override flags */
 enum { CO_PID_FILE = 1, CO_COM_PORT = 2, CO_INSTANCE_ID= 4, CO_INTERFACE = 8, CO_DEBUG_FILE = 0x10 };
+
+/* Ad2usb to xPL event mapping */
+
+lrrNameMap_t lrrNameMap[] = {
+{"ACLOSS","ac-fail"},
+{"LOWBAT","low-battery"},
+{"OPEN","disarmed"},
+{"ARM_AWAY","armed"},
+{"ARM_STAY","armed-stay"},
+{"AC_RESTORE","ac-restore"},
+{"LOWBAT_RESTORE","battery-ok"},
+{"ALARM_PANIC","alarm"},
+{"ALARM_FIRE","alarm"},
+{"ALARM_ENTRY","alarm"},
+{"ALARM_AUX","alarm"},
+{"ALARM_AUDIBLE","alarm"},
+{"ALARM_SILENT","alarm"},
+{"ALARM_PERIMETER","alarm"},
+{NULL,NULL} };
+
+
 
 char *progName;
 int debugLvl = 0; 
@@ -56,10 +98,14 @@ uint32_t configOverride = 0;
 
 static Bool lineReceived = FALSE;
 static seriostuff_t *serioStuff = NULL;
-static xPL_ServicePtr xplrcsService = NULL;
-static xPL_MessagePtr xplrcsStatusMessage = NULL;
-static xPL_MessagePtr xplrcsTriggerMessage = NULL;
-static ConfigEntry_t *configEntry;
+static xPL_ServicePtr xplService = NULL;
+static xPL_MessagePtr xplStatusMessage = NULL;
+static xPL_MessagePtr xplEventTriggerMessage = NULL;
+static xPL_MessagePtr xplZoneTriggerMessage = NULL;
+static ConfigEntry_t *configEntry = NULL;
+static expMapPtr_t expMapHead = NULL;
+static expMapPtr_t expMapTail = NULL;
+
 
 static char comPort[WS_SIZE] = DEF_COM_PORT;
 static char interface[WS_SIZE] = "";
@@ -67,6 +113,7 @@ static char debugFile[WS_SIZE] = "";
 static char instanceID[WS_SIZE] = DEF_INSTANCE_ID;
 static char pidFile[WS_SIZE] = DEF_PID_FILE;
 static char configFile[WS_SIZE] = DEF_CFG_FILE;
+
 
 
 /* Commandline options. */
@@ -158,12 +205,49 @@ static int pid_write(char *filename, pid_t pid) {
 
 static void shutdownHandler(int onSignal)
 {
-	xPL_setServiceEnabled(xplrcsService, FALSE);
-	xPL_releaseService(xplrcsService);
+	xPL_setServiceEnabled(xplService, FALSE);
+	xPL_releaseService(xplService);
 	xPL_shutdown();
 	unlink(pidFile);
 	exit(0);
 }
+
+
+/*
+* Split string into pieces
+*
+* The string is copied, and the sep characters are replaced with nul's and a list pointers
+* is built. 
+*
+* This function returns the number of arguments found.
+*
+* When the caller is finished with the list and the return value is non-zero he should free() the first entry.
+*/
+
+static int splitString(const String src, String *list, char sep, int limit)
+{
+		String p, q, srcCopy;
+		int i;
+		
+
+		if((!src) || (!list) || (!limit))
+			return 0;
+
+		if(!(srcCopy = strdup(src)))
+			return 0;
+
+		for(i = 0, q = srcCopy; (i < limit) && (p = strchr(q, sep)); i++, q = p + 1){
+			*p = 0;
+			list[i] = q;
+		
+		}
+		if(i){ /* If at least 1 comma is found, get the last bit */
+			list[i] = q;
+			i++;
+		}
+		return i;
+}
+
 
 
 /*
@@ -198,6 +282,71 @@ static void xPLListener(xPL_MessagePtr theMessage, xPL_ObjectPtr userValue)
 }
 
 
+/* 
+* Send LRR trigger message
+*/
+
+
+static void doLRRTrigger(String line)
+{
+	String plist[4];
+	int i;
+
+	plist[0] = NULL;
+
+	/* Split the message */
+
+
+	if(3 == splitString(line, plist, ',', 3)){
+		for(i = 0; lrrNameMap[i].ademco; i++){
+			if(!strcmp(lrrNameMap[i].ademco, plist[2]))
+				break;
+		}
+		if(lrrNameMap[i].ademco){ /* If match */
+			xPL_clearMessageNamedValues(xplEventTriggerMessage);
+			xPL_addMessageNamedValue(xplEventTriggerMessage, "event", lrrNameMap[i].xpl);
+			xPL_sendMessage(xplEventTriggerMessage);
+		}
+	}
+
+	if(plist[0])
+		free(plist[0]);
+}
+
+/*
+* Send an EXP trigger message
+*/
+
+static void doEXPTrigger(String line)
+{
+	String plist[4];
+	int i;
+	expMapPtr_t e;
+	
+	plist[0] = NULL;
+	
+
+	/* Split the message */
+	if(3 == splitString(line, plist, ',', 3)){
+		for(e = expMapHead; e ; e = e->next){
+			/* debug(DEBUG_EXPECTED,"plist[0]: %s, plist[1]: %s, e->addr: %d, e->channel: %d", plist[0], plist[1], e->addr, e->channel); */
+			if((atoi(plist[0]) == e->addr)&&(atoi(plist[1]) == e->channel))
+				break;
+		}
+		if(e){ /* If match */
+			i = atoi(plist[2]);
+			xPL_clearMessageNamedValues(xplEventTriggerMessage);
+			xPL_addMessageNamedValue(xplEventTriggerMessage, "event", i ? "alert" : "normal");
+			xPL_addMessageNamedValue(xplEventTriggerMessage, "zone", e->zone);
+			xPL_sendMessage(xplEventTriggerMessage);
+		}
+	}
+	if(plist[0])
+		free(plist[0]);
+
+}
+
+
 
 /*
 * Serial I/O handler (Callback from xPL)
@@ -218,21 +367,27 @@ static void serioHandler(int fd, int revents, int userValue)
 		/* Got a line */
 		line = serio_line(serioStuff);
 		if(line[0] == '['){ /* Parse the status bits */
-			strncpy(newStatBits, line+1, 20);
-			newStatBits[20] = 0;
+			confreadStringCopy(newStatBits, line + 1, 21);
 			if(firstTime){ /* Set new and old the same on first time */
 				firstTime = FALSE;
-				strcpy(oldStatBits, newStatBits);
+				confreadStringCopy(oldStatBits, newStatBits, 21);
 			}
 			if(strcmp(newStatBits, oldStatBits)){
-				strcpy(oldStatBits, newStatBits);
+				confreadStringCopy(oldStatBits, newStatBits, 21);
 				debug(DEBUG_EXPECTED,"New Status bits: %s", newStatBits);
 			}
 		}
 		else if(line[0] == '!'){ /* Other events */
+			String p = line + 5;
 			if(!strncmp(line + 1, "EXP", 3)){ /* Expander event ? */
-				debug(DEBUG_EXPECTED,"Expander event: %s",line + 5);
+				debug(DEBUG_EXPECTED,"Expander event: %s", p);
+				doEXPTrigger(p);
 			}
+			if(!strncmp(line + 1, "LRR", 3)){ /* Long Range radio event ? */
+				debug(DEBUG_EXPECTED,"Long Range Radio event: %s", p);
+				doLRRTrigger(p);
+			}
+
 		}
 
 	} /* End serio_nb_line_read */
@@ -246,13 +401,16 @@ static void serioHandler(int fd, int revents, int userValue)
 
 static void tickHandler(int userVal, xPL_ObjectPtr obj)
 {
-	static short pollCtr = 0;
+	static Bool firstTime = TRUE;
 
-
-	pollCtr++;
-
-	debug(DEBUG_ACTION, "TICK: %d", pollCtr);
 	/* Process clock tick update checking */
+	if(firstTime){
+		firstTime = FALSE;
+		xPL_clearMessageNamedValues(xplEventTriggerMessage);
+		xPL_addMessageNamedValue(xplEventTriggerMessage, "event", "ready");
+		xPL_sendMessage(xplEventTriggerMessage);
+	}
+
 }
 
 
@@ -260,7 +418,7 @@ static void tickHandler(int userVal, xPL_ObjectPtr obj)
 * Show help
 */
 
-void showHelp(void)
+static void showHelp(void)
 {
 	printf("'%s' is a daemon that bridges the xPL protocol to an ademco panel using an ad2usb adapter\n", progName);
 	printf("via a USB or RS-232 interface\n");
@@ -285,6 +443,18 @@ void showHelp(void)
 
 }
 
+/*
+* Print syntax error message and exit
+*/
+
+static void syntax_error(KeyEntryPtr_t ke, String configFile, String message)
+{
+	if(ke && configFile && message)
+		fatal("Syntax error in configuration file: %s on line %u: %s", configFile, confreadKeyLineNum(ke), message);
+	else
+		fatal("syntax_error() called without valid arguments");
+}
+
 
 /*
 * main
@@ -296,6 +466,7 @@ int main(int argc, char *argv[])
 	int longindex;
 	int optchar;
 	String p;
+	KeyEntryPtr_t e;
 
 	/* Set the program name */
 	progName=argv[0];
@@ -318,8 +489,7 @@ int main(int argc, char *argv[])
 
 			/* Was it a config file path ? */
 			case 'c':
-				strncpy(configFile, optarg, WS_SIZE - 1);
-				configFile[WS_SIZE - 1] = 0;
+				confreadStringCopy(configFile, optarg, WS_SIZE - 1);
 				debug(DEBUG_ACTION,"New config file path is: %s", configFile);
 				break;
 		
@@ -338,8 +508,7 @@ int main(int argc, char *argv[])
 
 			/* Was it a pid file switch? */
 			case 'f':
-				strncpy(pidFile, optarg, WS_SIZE - 1);
-				debugFile[WS_SIZE - 1] = 0;
+				confreadStringCopy(pidFile, optarg, WS_SIZE - 1);
 				debug(DEBUG_ACTION,"New pid file path is: %s", pidFile);
 				configOverride |= CO_PID_FILE;
 				break;
@@ -352,8 +521,7 @@ int main(int argc, char *argv[])
 
 			/* Specify interface to broadcast on */
 			case 'i': 
-				strncpy(interface, optarg, WS_SIZE -1);
-				interface[WS_SIZE - 1] = 0;
+				confreadStringCopy(interface, optarg, WS_SIZE -1);
 				xPL_setBroadcastInterface(interface);
 				configOverride |= CO_INTERFACE;
 
@@ -361,8 +529,7 @@ int main(int argc, char *argv[])
 
 			case 'u':
 				/* Override debug path*/
-				strncpy(debugFile, optarg, WS_SIZE - 1);
-				debugFile[WS_SIZE - 1] = 0;
+				confreadStringCopy(debugFile, optarg, WS_SIZE - 1);
 				debug(DEBUG_ACTION,"New debug path is: %s", debugFile);
 				configOverride |= CO_DEBUG_FILE;
 				break;
@@ -376,16 +543,14 @@ int main(int argc, char *argv[])
 				break;
 			case 'p':
 				/* Override com port*/
-				strncpy(comPort, optarg, WS_SIZE - 1);
-				comPort[WS_SIZE - 1] = 0;
+				confreadStringCopy(comPort, optarg, WS_SIZE - 1);
 				debug(DEBUG_ACTION,"New com port is: %s", comPort);
 				configOverride |= CO_COM_PORT;
 				break;
 
 			/* Was it an instance ID ? */
 			case 's':
-				strncpy(instanceID, optarg, WS_SIZE);
-				instanceID[WS_SIZE -1] = 0;
+				confreadStringCopy(instanceID, optarg, WS_SIZE);
 				debug(DEBUG_ACTION,"New instance ID is: %s", instanceID);
 				configOverride |= CO_INSTANCE_ID;
 				break;
@@ -403,7 +568,6 @@ int main(int argc, char *argv[])
 				fatal("Unhandled getopt return value %d", optchar);
 		}
 	}
-
 	
 	/* If there were any extra arguments, we should complain. */
 
@@ -415,21 +579,23 @@ int main(int argc, char *argv[])
 	if(!(configEntry =confreadScan(configFile, NULL)))
 		exit(1);
 
+	/* Check for a zone map */
+	if(!confreadGetFirstKeyBySection(configEntry, "zone-map"))
+		fatal("A valid zone-map section and at least one entry must be defined in the config file"); 
+
 	/* Parse the general section */
 
 	/* Com port */
 	if(!(configOverride & CO_COM_PORT)){
 		if((p = confreadValueBySectKey(configEntry, "general", "com-port"))){
-			strncpy(comPort, p, WS_SIZE);
-			comPort[WS_SIZE - 1] = 0;
+			confreadStringCopy(comPort, p, WS_SIZE);
 		}	
 	}
 
 	/* Debug file */
 	if(!(configOverride & CO_DEBUG_FILE)){
 		if((p = confreadValueBySectKey(configEntry, "general", "debug-file"))){
-			strncpy(debugFile, p, WS_SIZE);
-			debugFile[WS_SIZE - 1] = 0;
+			confreadStringCopy(debugFile, p, WS_SIZE);
 		}
 	
 	}
@@ -437,8 +603,7 @@ int main(int argc, char *argv[])
 	/* PID file */
 	if(!(configOverride & CO_PID_FILE)){
 		if((p = confreadValueBySectKey(configEntry, "general", "pid-file"))){
-			strncpy(pidFile, p, WS_SIZE);
-			pidFile[WS_SIZE - 1] = 0;
+			confreadStringCopy(pidFile, p, WS_SIZE);
 		}
 	
 	}
@@ -446,8 +611,7 @@ int main(int argc, char *argv[])
 	/* Instance ID */
 	if(!(configOverride & CO_INSTANCE_ID)){
 		if((p =  confreadValueBySectKey(configEntry, "general", "instance-id"))){
-			strncpy(instanceID, p, WS_SIZE);
-			instanceID[WS_SIZE - 1] = 0;
+			confreadStringCopy(instanceID, p, WS_SIZE);
 		}	
 	}
 
@@ -455,9 +619,68 @@ int main(int argc, char *argv[])
 	/* Interface */
 	if(!(configOverride & CO_INTERFACE)){
 		if((p = confreadValueBySectKey(configEntry, "general", "interface"))){
-			strncpy(interface, p, WS_SIZE);
-			interface[WS_SIZE - 1] = 0;
+			confreadStringCopy(interface, p, WS_SIZE);
 		}	
+	}
+
+	/* EXP zone mapping */
+
+	for(e =  confreadGetFirstKeyBySection(configEntry, "exp-map"); e; e = confreadGetNextKey(e)){
+		expMapPtr_t emp;
+		const String keyString = confreadGetKey(e);
+		const String zone = confreadGetValue(e);
+		String plist[3];
+		long val;
+		unsigned expaddr, expchannel;
+
+		/* Check the key and zone strings */
+		if(!(keyString) || (!zone))
+			syntax_error(e, configFile, "key or zone missing");
+
+
+		/* Split the address and channel */
+		plist[0] = NULL;
+		if(2 != splitString(keyString, plist, ',', 2))
+			syntax_error(e, configFile, "left hand side needs 2 numbers separated by a comma");
+
+		/* Convert and check address */
+		val = strtol(plist[0], NULL, 0);
+		if((val < 1) || (val > 99))
+			syntax_error(e, configFile, "address is limited from 1 - 99");
+		expaddr = (unsigned) val;
+
+		/* Convert and check channel */
+		val = strtol(plist[1], NULL, 0);
+		if((val < 1) || (val > 99))
+			syntax_error(e, configFile, "channel is limited from 1 - 8");
+		expchannel = (unsigned) val;
+
+		/* debug(DEBUG_ACTION, "Address: %u, channel: %u, zone: %s", expaddr, expchannel, zone); */
+
+		/* Get memory for entry */
+		if(!(emp = malloc(sizeof(expMap_t))))
+			fatal("Out of memory in: %s, line %d", __FILE__, __LINE__);
+
+		/* Initialize entry */
+		emp->next = emp->prev = NULL;
+		emp->addr = expaddr;
+		emp->channel = expchannel;
+		if(!(emp->zone = strdup(zone)))
+			fatal("Out of memory in: %s, line %d", __FILE__, __LINE__);
+
+		/* Insert into list */
+		if(!expMapHead){
+			expMapHead = expMapTail = emp;
+		}
+		else{
+			expMapTail->next = emp;
+			emp->prev = expMapTail;
+			expMapTail = emp;
+		}
+
+		/* Free parameter string */
+		if(plist[0])
+			free(plist[0]);
 	}
 
 
@@ -469,7 +692,11 @@ int main(int argc, char *argv[])
 	if(pid_read(pidFile) != -1) {
 		fatal("%s is already running", progName);
 	}
-  
+
+	/* Check to see the serial device exists before we fork */
+	if(!serio_check_node(comPort))
+		fatal("Serial device %s does not exist or its permissions are not allowing it to be used.", comPort);
+
 	/* Fork into the background. */
 
 	if(!noBackground) {
@@ -540,23 +767,31 @@ int main(int argc, char *argv[])
 		fatal("Unable to start xPL lib");
 	}
 
-	/* Initialze xplrcs service */
+	/* Initialize xplrcs service */
 
 	/* Create a service and set our application version */
-	xplrcsService = xPL_createService("hwstar", "xplademco", instanceID);
-  	xPL_setServiceVersion(xplrcsService, VERSION);
+	xplService = xPL_createService("hwstar", "xplademco", instanceID);
+  	xPL_setServiceVersion(xplService, VERSION);
 
 	/*
 	* Create a status message object
 	*/
 
-  	xplrcsStatusMessage = xPL_createBroadcastMessage(xplrcsService, xPL_MESSAGE_STATUS);
+  	xplStatusMessage = xPL_createBroadcastMessage(xplService, xPL_MESSAGE_STATUS);
   
 	/*
 	* Create trigger message objects
 	*/
 
-	xplrcsTriggerMessage = xPL_createBroadcastMessage(xplrcsService, xPL_MESSAGE_TRIGGER);
+	/* security.gateway */
+	if(!(xplEventTriggerMessage = xPL_createBroadcastMessage(xplService, xPL_MESSAGE_TRIGGER)))
+		fatal("Could not initialize security.gateway trigger");
+	xPL_setSchema(xplEventTriggerMessage, "security", "gateway");
+
+	/* security.zone */
+	if(!(xplZoneTriggerMessage = xPL_createBroadcastMessage(xplService, xPL_MESSAGE_TRIGGER)))
+		fatal("Could not initialize security.zone trigger");
+	xPL_setSchema(xplZoneTriggerMessage, "security", "zone");
 
 
   	/* Install signal traps for proper shutdown */
@@ -586,7 +821,7 @@ int main(int argc, char *argv[])
 
 
  	/* Enable the service */
-  	xPL_setServiceEnabled(xplrcsService, TRUE);
+  	xPL_setServiceEnabled(xplService, TRUE);
 
 	/* Update pid file */
 	if(pid_write(pidFile, getpid()) != 0) {

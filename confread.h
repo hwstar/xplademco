@@ -75,9 +75,11 @@ SectionEntryPtr_t confreadGetNextSection(SectionEntryPtr_t se);
 unsigned confreadSectionLineNum(SectionEntryPtr_t se);
 
 /* Key Functions */
+KeyEntryPtr_t confreadKeyEntryBySectKey(ConfigEntryPtr_t ce, const String section, const String key);
 KeyEntryPtr_t confreadFindKey(SectionEntryPtr_t se, const String key);
 const String confreadGetKey(KeyEntryPtr_t ke);
 KeyEntryPtr_t confreadGetFirstKey(SectionEntryPtr_t se);
+KeyEntryPtr_t confreadGetFirstKeyBySection(ConfigEntryPtr_t ce, const String section);
 KeyEntryPtr_t confreadGetNextKey(KeyEntryPtr_t ke);
 unsigned confreadKeyLineNum(KeyEntryPtr_t ke);
 
@@ -92,7 +94,6 @@ void confReadDefErrorHandler( int etype, int linenum, const String info);
 
 /* Utility Functions */
 
-int confreadSplitArgs(const String string, char sep, String *list, int limit);
 String confreadStringCopy(String dest, const String src, int charsToCopy);
 
 /* Debugging functions */

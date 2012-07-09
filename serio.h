@@ -43,7 +43,7 @@ struct seriostuff {
 /* Prototypes. */
 seriostuff_t *serio_open(char *tty_name, unsigned baudrate);
 void serio_close(seriostuff_t *serio);
-int serio_check_node(seriostuff_t *serio);
+int serio_check_node(char *path);
 int serio_flush_input(seriostuff_t *serio);
 int serio_fd(seriostuff_t *s);
 int serio_get_baud(unsigned br);

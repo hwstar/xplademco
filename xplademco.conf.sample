@@ -1,0 +1,78 @@
+#
+# xplademco.conf - Configuration file
+#
+#
+# General Section
+#
+[general]
+#
+# For this section, the defaults are shown commented out
+#
+# Path to com device with ad2usb connected to it. Udev or dev/serial should be used to ensure the the com port device name remains
+# the same across power cycles.
+#
+#com-port = /dev/tty-ademco
+#
+# Path to debuf file when daemonized. No debug file is specified by default
+#
+#debug-file =
+#
+# The pid file is used to detect other instances of the program running and abort if that is the case. If running as non-root, you'll need to
+# specify a different writable directory where the pid file can be stored.
+#pid-file = /var/run/xplademco.pid 
+#
+# The instance-id us used to distinguish this gateway from any other running on the network. 
+# If you have multiple ad2usb's, a separate instance of xplademco will need to be
+# run for each of them.
+#
+#instance-id = ademco
+#
+# The interface option is used when the gateway is running on a system with multiple network adapters
+# No interface is specified by default. Most setups will not need to specify this.
+#interface =
+#
+# End of General Section
+#
+#
+#
+# Numeric zone to alpha zone mapping.
+# 
+# The numeric zone reported by the panel is on the left, and the alpha zone name goes on the right
+# A zone map is required, and xplademco will refuse to run without one. There are no defaults for
+# zones. Any zones not mapped will not be reported, so be sure you properly define *ALL* the zones in your system. 
+#
+# The zone map below is for guidance only. 
+#
+#[zone-map]
+#1 = fire
+#2 = front-door
+#3 = back-door
+#4 = garage
+#14 = hall-pir
+#15 = lvr-pir
+#16 = office-pir
+#
+# End of Zone Section
+#
+# Expander Mapping
+#
+#
+# To optionally report zone alerts from a zone expander, map an expander address,channel on the left to a zone name on the right.
+# Trigger messages will be entered 
+#
+#[exp-map]
+#7,1 = hall-pir
+#7,2 = lvr-pir
+#7,3 = office-pir
+#
+# End of expander mapping
+#
+#
+# End of config file
+#
+
+
+
+
+
+

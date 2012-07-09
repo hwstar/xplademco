@@ -169,24 +169,24 @@ int serio_get_baud( unsigned br)
 * Check the path name to the node to ensure it exists and is a character device
 */
 
-int serio_check_node(seriostuff_t *serio)
+int serio_check_node(char *path)
 {
 	struct stat s;
 
 	/* Do sanity checks first */
 
-	if(stat(serio->path, &s) < 0){
-		debug(DEBUG_UNEXPECTED, "Can't stat %s: %s", serio->path, strerror(errno));
+	if(stat(path, &s) < 0){
+		debug(DEBUG_UNEXPECTED, "Can't stat %s: %s", path, strerror(errno));
 		return FALSE;
 	}
 
 	if(!S_ISCHR(s.st_mode)){
-		debug(DEBUG_UNEXPECTED, "%s is not a character device", serio->path);
+		debug(DEBUG_UNEXPECTED, "%s is not a character device", path);
 		return FALSE;
 	}
 
-	if(access(serio->path, R_OK|W_OK) < 0){
-		debug(DEBUG_UNEXPECTED, "Permissions problem on: %s", serio->path);
+	if(access(path, R_OK|W_OK) < 0){
+		debug(DEBUG_UNEXPECTED, "Permissions problem on: %s", path);
 		return FALSE;
 	}
 	return TRUE;
@@ -241,7 +241,7 @@ seriostuff_t *serio_open(char *tty_name, unsigned baudrate) {
 
 	/* Make sure the path is valid */
 
-	if(!serio_check_node(serio)){
+	if(!serio_check_node(serio->path)){
 		free_seriostuff(serio);
 		return NULL;
 	}
