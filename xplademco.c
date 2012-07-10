@@ -1005,7 +1005,7 @@ int main(int argc, char *argv[])
 
 
 		/* Convert and check channel */
-		if(!str2uns(plist[0], &expchannel, 1, 99))
+		if(!str2uns(plist[1], &expchannel, 1, 99))
 			syntax_error(e, configFile,"channel is limited from 1 - 99");
 			
 
