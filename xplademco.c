@@ -317,6 +317,9 @@ static void shutdownHandler(int onSignal)
 static int matchCommand(const String const *commandList, const String const command)
 {
 	int i;
+	
+	if((!command) || (!commandList))
+		return -1;
 
 	for(i = 0; commandList[i]; i++){
 		if(!strcmp(command, commandList[i]))
