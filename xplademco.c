@@ -80,8 +80,6 @@ struct zone_map {
 	zoneMapPtr_t prev;
 };
 	
-
-
 typedef struct {
 	const String ademco;
 	const String xpl;
@@ -105,26 +103,6 @@ struct exp_map {
 
 /* Config override flags */
 enum { CO_PID_FILE = 1, CO_COM_PORT = 2, CO_INSTANCE_ID= 4, CO_INTERFACE = 8, CO_DEBUG_FILE = 0x10 };
-
-/* Ad2usb to xPL event mapping */
-
-lrrNameMap_t lrrNameMap[] = {
-{"ACLOSS","ac-fail"},
-{"LOWBAT","low-battery"},
-{"OPEN","disarmed"},
-{"ARM_AWAY","armed"},
-{"ARM_STAY","armed-stay"},
-{"AC_RESTORE","ac-restore"},
-{"LOWBAT_RESTORE","battery-ok"},
-{"ALARM_PANIC","alarm"},
-{"ALARM_FIRE","alarm"},
-{"ALARM_ENTRY","alarm"},
-{"ALARM_AUX","alarm"},
-{"ALARM_AUDIBLE","alarm"},
-{"ALARM_SILENT","alarm"},
-{"ALARM_PERIMETER","alarm"},
-{NULL,NULL} };
-
 
 
 char *progName;
@@ -190,6 +168,26 @@ static struct option longOptions[] = {
   {"version", 0, 0, 'v'},
   {0, 0, 0, 0}
 };
+
+/* Ad2usb to xPL event mapping */
+
+lrrNameMap_t lrrNameMap[] = {
+{"ACLOSS","ac-fail"},
+{"LOWBAT","low-battery"},
+{"OPEN","disarmed"},
+{"ARM_AWAY","armed"},
+{"ARM_STAY","armed-stay"},
+{"AC_RESTORE","ac-restore"},
+{"LOWBAT_RESTORE","battery-ok"},
+{"ALARM_PANIC","alarm"},
+{"ALARM_FIRE","alarm"},
+{"ALARM_ENTRY","alarm"},
+{"ALARM_AUX","alarm"},
+{"ALARM_AUDIBLE","alarm"},
+{"ALARM_SILENT","alarm"},
+{"ALARM_PERIMETER","alarm"},
+{NULL,NULL} };
+
 
 /* 
  * Allocate a memory block and zero it out
@@ -487,14 +485,12 @@ static void doGateStat()
 static void xPLListener(xPL_MessagePtr theMessage, xPL_ObjectPtr userValue)
 {
 
-	String ws;
-
-
 	if(!xPL_isBroadcastMessage(theMessage)){ /* If not a broadcast message */
 		if(xPL_MESSAGE_COMMAND == xPL_getMessageType(theMessage)){ /* If the message is a command */
 			const String type = xPL_getSchemaType(theMessage);
 			const String class = xPL_getSchemaClass(theMessage);
 			const String command =  xPL_getMessageNamedValue(theMessage, "command");
+			const String request =  xPL_getMessageNamedValue(theMessage, "request");
 		
 			
 			
@@ -502,33 +498,27 @@ static void xPLListener(xPL_MessagePtr theMessage, xPL_ObjectPtr userValue)
 			
 			/* Allocate a working string */
 
-			if(!(ws = mallocz(WS_SIZE)))
-				MALLOC_ERROR;
-			ws[0] = 0;
+
 			if(!strcmp(class,"security")){
+				
 				if(!strcmp(type, "basic")){ /* Basic command schema */
 					if(command){
+/*
+ * Note: I'm somewhat leery of implementing the arm, disarm, isolate, and bypass commands
+ * as premises security could be compromised. Request messages seem be safer than commands,
+ * at least to me.
+ */
+ 
 						switch(matchCommand(basicCommandList, command)){
-							case 0: /*  */
-								break;
 
-							case 1: /* */
-								break;
-
-							case 2: /* */
-								break;
-
-							case 3: /* */
-								break;
-					
 							default:
 								break;
 						}
 					}
 				}
 				else if(!strcmp(type, "request")){ /* Request command schema */
-					if(command){
-						switch(matchCommand(requestCommandList, command)){
+					if(request){
+						switch(matchCommand(requestCommandList, request)){
 
 							case 0: /* gateinfo */
 								doGateInfo();
@@ -553,7 +543,6 @@ static void xPLListener(xPL_MessagePtr theMessage, xPL_ObjectPtr userValue)
 					}
 				}
 			}
-			free(ws);
 		}
 
 	}
