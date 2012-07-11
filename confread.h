@@ -90,7 +90,7 @@ unsigned confreadGetNumEntriesInSect(ConfigEntryPtr_t ce, const String section);
 /* Value functions */
 const String confreadGetValue(KeyEntryPtr_t ke);
 const String confreadValueBySectKey(ConfigEntryPtr_t ce, const String section, const String key);
-Bool confReadValueBySectKeyAsUnsigned(ConfigEntryPtr_t ce, const String section, const String key, unsigned *res);
+Bool confreadValueBySectKeyAsUnsigned(ConfigEntryPtr_t ce, const String section, const String key, unsigned *res);
 
 /*Default error handler*/
 void confReadDefErrorHandler( int etype, int linenum, const String info);

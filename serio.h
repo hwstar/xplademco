@@ -16,7 +16,7 @@
 *    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 *
 *
-* serio definitions.
+*    serial I/O definitions.
 *
 *
 */
@@ -24,34 +24,37 @@
 #ifndef SERIO_H
 #define SERIO_H
 
+#include "types.h"
+
 #define SERIO_MAX_LINE 1024
 
 
 /* Typedefs. */
-typedef struct seriostuff seriostuff_t;
+typedef struct seriostuff serioStuff_t;
+typedef serioStuff_t * serioStuffPtr_t;
 
 /* Structure to hold serio info. */
 struct seriostuff {
 	int fd;				/* File descriptor */
 	int pos;			/* Position variable for non-blocking read fn's */
-	unsigned brc;			/* baud rate constant */
-	unsigned magic;			/* magic number */
+	unsigned brc;		/* baud rate constant */
+	unsigned magic;	/* magic number */
 	char *path;			/* path name to node file */
 	char *line;			/* line buffer for non-blocking read fn's */
 };
 
 /* Prototypes. */
-seriostuff_t *serio_open(char *tty_name, unsigned baudrate);
-void serio_close(seriostuff_t *serio);
-int serio_check_node(char *path);
-int serio_flush_input(seriostuff_t *serio);
-int serio_fd(seriostuff_t *s);
+serioStuffPtr_t serio_open(const char *tty_name, unsigned baudrate);
+void serio_close(serioStuffPtr_t serio);
+Bool serio_check_node(char *path);
+int serio_flush_input(serioStuffPtr_t serio);
+int serio_fd(serioStuffPtr_t s);
 int serio_get_baud(unsigned br);
-int serio_write(seriostuff_t *serio, const void *buffer, size_t count);
-int serio_read(seriostuff_t *serio, void *buffer, size_t count);
-int serio_nb_line_read(seriostuff_t *serio);
-int serio_nb_line_readcr(seriostuff_t *serio);
-char *serio_line(seriostuff_t *serio);
-int serio_printf(seriostuff_t *serio, const char *format, ...);
+int serio_write(serioStuffPtr_t serio, const void *buffer, size_t count);
+int serio_read(serioStuffPtr_t serio, void *buffer, size_t count);
+int serio_nb_line_read(serioStuffPtr_t serio);
+int serio_nb_line_readcr(serioStuffPtr_t serio);
+char *serio_line(serioStuffPtr_t serio);
+int serio_printf(serioStuffPtr_t serio, const char *format, ...);
 
 #endif

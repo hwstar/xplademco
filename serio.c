@@ -1,5 +1,4 @@
 /*
-*    xplrcs - an RCS RS-485 thermostat to xPL bridge
 *    Copyright (C) 2012  Stephen A. Rodgers
 *
 *    This program is free software: you can redistribute it and/or modify
@@ -38,6 +37,7 @@
 #include <errno.h>
 #include <string.h>
 #include <fcntl.h>
+#include "types.h"
 #include "serio.h"
 #include "notify.h"
 
@@ -53,7 +53,7 @@ enum {MS_OK, MS_FAULT};
 * Private function to free all memory used in a seriostuff_t type
 */
 
-static void free_seriostuff(seriostuff_t *serio)
+static void free_seriostuff(serioStuffPtr_t serio)
 {
 	if(serio && (serio->magic == SERIO_MAGIC)){
 		if(serio->line)
@@ -72,7 +72,7 @@ static void free_seriostuff(seriostuff_t *serio)
 */
 
 
-static int node_open(seriostuff_t *serio)
+static int node_open(serioStuffPtr_t serio)
 {
 	struct termios termios;
 
@@ -140,7 +140,7 @@ static int node_open(seriostuff_t *serio)
 * Check baud rate for validity
 */
 
-int serio_get_baud( unsigned br)
+int serio_get_baud(unsigned br)
 {	
 	switch(br){
 		case 1200:
@@ -169,7 +169,7 @@ int serio_get_baud( unsigned br)
 * Check the path name to the node to ensure it exists and is a character device
 */
 
-int serio_check_node(char *path)
+Bool serio_check_node(char *path)
 {
 	struct stat s;
 
@@ -204,8 +204,8 @@ int serio_check_node(char *path)
 
 
 
-seriostuff_t *serio_open(char *tty_name, unsigned baudrate) {
-	seriostuff_t *serio;
+serioStuffPtr_t serio_open(const char *tty_name, unsigned baudrate) {
+	serioStuffPtr_t serio;
 	speed_t brc;
 
 
@@ -215,11 +215,11 @@ seriostuff_t *serio_open(char *tty_name, unsigned baudrate) {
 	}
 	
 	/* Allocate memory for our struct */
-	if(!(serio = malloc(sizeof(seriostuff_t))))
+	if(!(serio = malloc(sizeof(serioStuff_t))))
 		return NULL;
 
 	/* Zero it */
-	memset(serio, 0, sizeof(seriostuff_t));
+	memset(serio, 0, sizeof(serioStuff_t));
 	
 	/* Add the magic number */
 
@@ -262,14 +262,14 @@ seriostuff_t *serio_open(char *tty_name, unsigned baudrate) {
 * Return the file descriptor
 */
 
-int serio_fd(seriostuff_t *serio)
+int serio_fd(serioStuffPtr_t serio)
 {
 	return serio->fd;
 }
 
 /* Flush the input buffer */
 
-int serio_flush_input(seriostuff_t *serio)
+int serio_flush_input(serioStuffPtr_t serio)
 {
 
 	return tcflush(serio->fd, TCIFLUSH);
@@ -279,7 +279,7 @@ int serio_flush_input(seriostuff_t *serio)
 
 /* Close the TTY port, and free the serio structure */
 
-void serio_close(seriostuff_t *serio){
+void serio_close(serioStuffPtr_t serio){
 
 	if(serio->fd >= 0)
 		close(serio->fd);
@@ -291,7 +291,7 @@ void serio_close(seriostuff_t *serio){
 * Unbuffered write
 */
 
-int serio_write(seriostuff_t *serio, const void *buffer, size_t count)
+int serio_write(serioStuffPtr_t serio, const void *buffer, size_t count)
 {
 
 	return write(serio->fd, buffer, count);
@@ -301,7 +301,7 @@ int serio_write(seriostuff_t *serio, const void *buffer, size_t count)
 * Unbuffered read
 */
 
-int serio_read(seriostuff_t *serio, void *buffer, size_t count)
+int serio_read(serioStuffPtr_t serio, void *buffer, size_t count)
 {
 
 	return read(serio->fd, buffer, count);
@@ -315,7 +315,7 @@ int serio_read(seriostuff_t *serio, void *buffer, size_t count)
 */
 
 
-int serio_nb_line_read(seriostuff_t *serio)
+int serio_nb_line_read(serioStuffPtr_t serio)
 {
 	char c;
 	int res;
@@ -360,7 +360,7 @@ int serio_nb_line_read(seriostuff_t *serio)
 */
 
 
-int serio_nb_line_readcr(seriostuff_t *serio)
+int serio_nb_line_readcr(serioStuffPtr_t serio)
 {
 	char c;
 	int res;
@@ -404,7 +404,7 @@ int serio_nb_line_readcr(seriostuff_t *serio)
 * Return address of line buffer used for serio_nb_line_read
 */
 
-char *serio_line(seriostuff_t *serio)
+char *serio_line(serioStuffPtr_t serio)
 {
 	return serio->line;
 }
@@ -414,7 +414,7 @@ char *serio_line(seriostuff_t *serio)
 */
 
 
-int serio_printf(seriostuff_t *serio, const char *format, ...)
+int serio_printf(serioStuffPtr_t serio, const char *format, ...)
 {
  	va_list ap;
 	int res = 0;

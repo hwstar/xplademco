@@ -115,7 +115,7 @@ Bool alarmLRR = FALSE;
 stateBits_t stateBits = {0,0};
 
 static Bool lineReceived = FALSE;
-static seriostuff_t *serioStuff = NULL;
+static serioStuffPtr_t serioStuff = NULL;
 static xPL_ServicePtr xplService = NULL;
 static xPL_MessagePtr xplStatusMessage = NULL;
 static xPL_MessagePtr xplEventTriggerMessage = NULL;

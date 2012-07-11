@@ -461,7 +461,7 @@ const String confreadValueBySectKey(ConfigEntryPtr_t ce, const String section, c
 * Find value by section and key, convert to unsigned int, return in res. 
 */
 
-Bool confReadValueBySectKeyAsUnsigned(ConfigEntryPtr_t ce, const String section, const String key, unsigned *res)
+Bool confreadValueBySectKeyAsUnsigned(ConfigEntryPtr_t ce, const String section, const String key, unsigned *res)
 {
 	String num = confreadValueBySectKey(ce, section, key);
 	if(num && res){
