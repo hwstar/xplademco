@@ -490,19 +490,19 @@ static void xPLListener(xPL_MessagePtr theMessage, xPL_ObjectPtr userValue)
 
 	if(!xPL_isBroadcastMessage(theMessage)){ /* If not a broadcast message */
 		if(xPL_MESSAGE_COMMAND == xPL_getMessageType(theMessage)){ /* If the message is a command */
+			const String iID = xPL_getTargetInstanceID(theMessage);
 			const String type = xPL_getSchemaType(theMessage);
 			const String class = xPL_getSchemaClass(theMessage);
 			const String command =  xPL_getMessageNamedValue(theMessage, "command");
 			const String request =  xPL_getMessageNamedValue(theMessage, "request");
 		
-			
-			
+				
 			debug(DEBUG_EXPECTED,"Non-broadcast message received: type=%s, class=%s", type, class);
 			
 			/* Allocate a working string */
 
 
-			if(!strcmp(class,"security")){
+			if((!strcmp(instanceID, iID)) && (!strcmp(class, "security"))){
 				
 				if(!strcmp(type, "basic")){ /* Basic command schema */
 					if(command){
