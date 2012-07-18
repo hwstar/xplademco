@@ -252,7 +252,7 @@ serioStuffPtr_t serio_open(const char *tty_name, unsigned baudrate) {
 		free_seriostuff(serio);
 		return NULL;
 	}
-	
+
 	
 	return(serio);
 }
@@ -264,15 +264,20 @@ serioStuffPtr_t serio_open(const char *tty_name, unsigned baudrate) {
 
 int serio_fd(serioStuffPtr_t serio)
 {
-	return serio->fd;
+	int res = -1;
+	if(serio)
+		res = serio->fd;
+	return res;
 }
 
 /* Flush the input buffer */
 
 int serio_flush_input(serioStuffPtr_t serio)
 {
-
-	return tcflush(serio->fd, TCIFLUSH);
+	int res = -1;
+	if(serio)
+		res = tcflush(serio->fd, TCIFLUSH);
+	return res;
 }
 
 
@@ -281,10 +286,11 @@ int serio_flush_input(serioStuffPtr_t serio)
 
 void serio_close(serioStuffPtr_t serio){
 
-	if(serio->fd >= 0)
-		close(serio->fd);
-	free_seriostuff(serio);
-
+	if(serio){
+		if(serio->fd >= 0)
+			close(serio->fd);
+		free_seriostuff(serio);
+	}
 }
 
 /*
@@ -293,8 +299,10 @@ void serio_close(serioStuffPtr_t serio){
 
 int serio_write(serioStuffPtr_t serio, const void *buffer, size_t count)
 {
-
-	return write(serio->fd, buffer, count);
+	int res = -1;
+	if(serio)
+		res = write(serio->fd, buffer, count);
+	return res;
 }
 
 /*
@@ -303,15 +311,22 @@ int serio_write(serioStuffPtr_t serio, const void *buffer, size_t count)
 
 int serio_read(serioStuffPtr_t serio, void *buffer, size_t count)
 {
-
-	return read(serio->fd, buffer, count);
+	int res = -1;
+	
+	if(serio){
+		res = read(serio->fd, buffer, count);
+		if(res == 0){
+			serio->eof = TRUE;
+		}
+	}
+	return res;	
 }
 
 
 /*
 * Non blocking line read
 * Read bytes one at a time and build a line.
-* Return 1 return detected, 0 if not at end of line, and -1 if error.
+* Return 1 if return detected or EOF , 0 if not at end of line, and -1 if error.
 */
 
 
@@ -319,12 +334,16 @@ int serio_nb_line_read(serioStuffPtr_t serio)
 {
 	char c;
 	int res;
+	
+	if(!serio)
+		return -1;
 
 
 	do{
-		res = serio_read(serio, &c, 1);
-	
-
+		res = serio_read(serio, &c, 1);	
+		if(serio->eof){
+			return TRUE;
+		}
 		if(res < 0){
 			if((errno != EAGAIN) && (errno != EWOULDBLOCK)){
 				debug(DEBUG_UNEXPECTED, "Read error on fd %d: %s", serio->fd, strerror(errno));
@@ -356,7 +375,7 @@ int serio_nb_line_read(serioStuffPtr_t serio)
 /*
 * Non blocking line read
 * Read bytes one at a time and build a line.
-* Return 1 on cr detected, 0 if not at end of line, and -1 if error.
+* Return 1 on cr detected or EOF, 0 if not at end of line, and -1 if error.
 */
 
 
@@ -364,11 +383,16 @@ int serio_nb_line_readcr(serioStuffPtr_t serio)
 {
 	char c;
 	int res;
+	
+	if(!serio)
+		return -1;
 
 	do{
 		res = serio_read(serio, &c, 1);	
-
-		if(res < 0){
+		if(serio->eof){
+			return TRUE;
+		}
+		else if(res < 0){	
 			if((errno != EAGAIN) && (errno != EWOULDBLOCK)){
 				debug(DEBUG_UNEXPECTED, "Read error on fd %d: %s", serio->fd, strerror(errno));
 				serio->pos = 0;
@@ -399,6 +423,17 @@ int serio_nb_line_readcr(serioStuffPtr_t serio)
 	return ERROR;
 }
 
+/*
+ * Return TRUE if at EOF
+ */
+
+Bool serio_ateof(serioStuffPtr_t serio)
+{
+	Bool res = TRUE;
+	if(serio)
+		res = serio->eof;
+	return res;
+}
 
 /*
 * Return address of line buffer used for serio_nb_line_read
@@ -406,7 +441,10 @@ int serio_nb_line_readcr(serioStuffPtr_t serio)
 
 char *serio_line(serioStuffPtr_t serio)
 {
-	return serio->line;
+	String res = NULL;
+	if(serio)
+		res = serio->line;
+	return res;
 }
 
 /*
@@ -420,12 +458,13 @@ int serio_printf(serioStuffPtr_t serio, const char *format, ...)
 	int res = 0;
     
 	va_start(ap, format);
-
-	if(serio->fd >= 0)
-		res = vdprintf(serio->fd, format, ap);
-
+	
+	if(serio && (serio->eof == FALSE)){
+		if(serio->fd >= 0)
+			res = vdprintf(serio->fd, format, ap);
+	}
+	
 	va_end(ap);
-
 	return res;
 }
 

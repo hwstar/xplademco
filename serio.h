@@ -35,6 +35,7 @@ typedef serioStuff_t * serioStuffPtr_t;
 
 /* Structure to hold serio info. */
 struct seriostuff {
+	Bool eof;			/* EOF flag */
 	int fd;				/* File descriptor */
 	int pos;			/* Position variable for non-blocking read fn's */
 	unsigned brc;		/* baud rate constant */
@@ -55,6 +56,7 @@ int serio_read(serioStuffPtr_t serio, void *buffer, size_t count);
 int serio_nb_line_read(serioStuffPtr_t serio);
 int serio_nb_line_readcr(serioStuffPtr_t serio);
 char *serio_line(serioStuffPtr_t serio);
+Bool serio_ateof(serioStuffPtr_t serio);
 int serio_printf(serioStuffPtr_t serio, const char *format, ...);
 
 #endif

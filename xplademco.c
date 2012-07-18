@@ -50,6 +50,9 @@
 
 
 #define WS_SIZE 256
+#define SERIAL_RETRY_TIME 5
+#define COM_BAUD_RATE 115200
+
 #define DEF_INSTANCE_ID		"ademco"
 #define DEF_COM_PORT		"/dev/tty-ademco"
 #define DEF_PID_FILE		"/var/run/xplademco.pid"
@@ -107,12 +110,12 @@ enum { CO_PID_FILE = 1, CO_COM_PORT = 2, CO_INSTANCE_ID= 4, CO_INTERFACE = 8, CO
 
 char *progName;
 int debugLvl = 0; 
-Bool noBackground = FALSE;
-uint32_t pollRate = 5;
-uint32_t configOverride = 0;
-unsigned zoneCount = 0;
-Bool alarmLRR = FALSE;
-stateBits_t stateBits = {0,0};
+static Bool noBackground = FALSE;
+static unsigned serialRetryTimer = 0;
+static uint32_t configOverride = 0;
+static unsigned zoneCount = 0;
+static Bool alarmLRR = FALSE;
+static stateBits_t stateBits = {0,0};
 
 static Bool lineReceived = FALSE;
 static serioStuffPtr_t serioStuff = NULL;
@@ -573,7 +576,7 @@ static void doLRRTrigger(String line)
 		if((!strcmp(plist[2], "OPEN")) || (!strcmp(plist[2], "CANCEL")))
 			alarmLRR = FALSE;
 			
-		/* Try to find a match to an xPL equicalent reporting state */
+		/* Try to find a match to an xPL equivalent reporting state */
 		for(i = 0; lrrNameMap[i].ademco; i++){
 			if(!strcmp(lrrNameMap[i].ademco, plist[2]))
 				break;
@@ -645,8 +648,17 @@ static void serioHandler(int fd, int revents, int userValue)
 	
 	/* Do non-blocking line read */
 	if(serio_nb_line_readcr(serioStuff)){
+		/* Got a line or EOF */
+		if(serio_ateof(serioStuff)){
+			debug(DEBUG_EXPECTED, "EOF detected on serial port, closing port");
+			if(!xPL_removeIODevice(serio_fd(serioStuff))) /* Unregister ourself */
+				debug(DEBUG_UNEXPECTED,"Could not unregister from poll list");
+			serio_close(serioStuff); /* Close serial port */
+			serioStuff = NULL;
+			serialRetryTimer = SERIAL_RETRY_TIME;
+			return; /* Bail */
+		}
 		lineReceived=TRUE;
-		/* Got a line */
 		line = serio_line(serioStuff);
 		if(line[0] == '['){ /* Parse the status bits */
 			confreadStringCopy(newStatBits, line + 1, 21);
@@ -717,6 +729,22 @@ static void tickHandler(int userVal, xPL_ObjectPtr obj)
 		xPL_clearMessageNamedValues(xplEventTriggerMessage);
 		xPL_addMessageNamedValue(xplEventTriggerMessage, "event", "ready");
 		xPL_sendMessage(xplEventTriggerMessage);
+	}
+	
+	if(serialRetryTimer){ /* If this is non-zero, we lost the serial connection, wait retry time and try again */
+		serialRetryTimer--;
+		if(!serialRetryTimer){
+			if(!(serioStuff = serio_open(comPort, COM_BAUD_RATE))){
+				debug(DEBUG_UNEXPECTED,"Serial reconnect failed, trying later...");
+				serialRetryTimer = SERIAL_RETRY_TIME;
+				return;
+			}
+			else{
+				debug(DEBUG_EXPECTED,"Serial reconnect successful");
+				if(!xPL_addIODevice(serioHandler, 1234, serio_fd(serioStuff), TRUE, FALSE, FALSE))
+					fatal("Could not register serial I/O fd with xPL");
+			}
+		}
 	}
 
 }
@@ -1152,7 +1180,7 @@ int main(int argc, char *argv[])
 
 	/* Initialize the COM port */
 	
-	if(!(serioStuff = serio_open(comPort, 115200)))
+	if(!(serioStuff = serio_open(comPort, COM_BAUD_RATE)))
 		fatal("Could not open com port: %s", comPort);
 
 
