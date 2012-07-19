@@ -58,6 +58,19 @@ static int linescan(String *lp, String tokstring);
 static String removespctab(String line);
 static char copyuntil(String dest, String *srcp, int max_dest_len, const String stopchrs);
 
+/* 
+ * Allocate a memory block and zero it out
+ */
+
+static void *mallocz(size_t size)
+{
+	void *m = malloc(size);
+	if(m)
+		memset(m, 0, size);
+	return m;
+}
+ 
+
 /*
 * Hash a string
 */
@@ -405,6 +418,15 @@ const String confreadGetValue(KeyEntryPtr_t ke)
 
 }
 
+
+/*
+ * Return value string by section entry and key name
+ */
+const String confreadValueBySectEntKey(SectionEntryPtr_t se, const String key)
+{
+	return confreadGetValue(confreadFindKey(se, key));
+}
+
 /*
 * Return key entry by section and key
 */
@@ -480,7 +502,7 @@ Bool confreadValueBySectKeyAsUnsigned(ConfigEntryPtr_t ce, const String section,
 * Default error handler for confreadScan()
 */
 
-void confReadDefErrorHandler( int etype, int linenum, String info)
+void confreadDefErrorHandler( int etype, int linenum, String info)
 {
 	switch(etype){
 
@@ -609,33 +631,33 @@ ConfigEntryPtr_t confreadScan(String thePath, void (*error_callback)(int type, i
 	/* User our built in handler if no error handler is specified */
 
 	if(!error_callback)
-		error_callback = confReadDefErrorHandler;
+		error_callback = confreadDefErrorHandler;
 
 	/* Allocate a config entry */
 
-	if(!(ce = malloc(sizeof(ConfigEntry_t)))){
+	if(!(ce = mallocz(sizeof(ConfigEntry_t)))){
 		debug(DEBUG_UNEXPECTED, "Can't malloc config entry in confReadScan()");
 		(*error_callback)(CRE_MALLOC, __LINE__, NULL);
 		return NULL;
 	}
 	
 	/* Initialize config entry */
-	memset(ce, 0, sizeof(ConfigEntry_t));
 	ce->magic = CE_MAGIC;
 
 	
 	/* Allocate a line buffer */
 
-	if(!(ce->line = malloc(MAX_CONFIG_LINE))){
+	if(!(ce->line = mallocz(MAX_CONFIG_LINE))){
 		debug(DEBUG_UNEXPECTED, "Can't malloc line buffer in confReadScan()");
 		confreadFree(ce);
 		(*error_callback)(CRE_MALLOC, __LINE__, NULL);
 		return NULL;
 	}
 
+
 	/* Allocate a line buffer */
 
-	if(!(ce->work_string = malloc(MAX_CONFIG_LINE))){
+	if(!(ce->work_string = mallocz(MAX_CONFIG_LINE))){
 		debug(DEBUG_UNEXPECTED, "Can't malloc work string in confReadScan()");
 		confreadFree(ce);
 		(*error_callback)(CRE_MALLOC, __LINE__, NULL);
@@ -675,13 +697,12 @@ ConfigEntryPtr_t confreadScan(String thePath, void (*error_callback)(int type, i
 			
 			case TOK_SECTION:
 
-				if(!(se = malloc(sizeof(SectionEntry_t)))){
+				if(!(se = mallocz(sizeof(SectionEntry_t)))){
 					confreadFree(ce);
 					(*error_callback)(CRE_MALLOC, __LINE__, NULL);
 					return NULL;
 				}
 				/* Initialize section entry */
-				memset(se, 0, sizeof(SectionEntry_t));
 				se->magic = SE_MAGIC;
 
 				/* Copy the section name into the new entry */
@@ -725,14 +746,13 @@ ConfigEntryPtr_t confreadScan(String thePath, void (*error_callback)(int type, i
 
 				kv = NULL;
 				if(se){	/* There has to be a section defined */
-					if(!(kv = malloc(sizeof(KeyEntry_t)))){
+					if(!(kv = mallocz(sizeof(KeyEntry_t)))){
 						confreadFree(ce);
 						(*error_callback)(CRE_MALLOC, __LINE__, NULL);
 						return NULL;
 					}
 		
 					/* Initialize section entry */
-					memset(kv, 0, sizeof(KeyEntry_t));
 					kv->magic = KE_MAGIC;
 
 					/* Save the key */
