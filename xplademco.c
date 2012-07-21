@@ -67,6 +67,7 @@ struct state_bits {
 	unsigned alarm : 1;
 	unsigned acfail : 1;
 	unsigned lowbatt : 1;
+	unsigned ready : 1;
 };
 
 
@@ -115,7 +116,7 @@ static unsigned serialRetryTimer = 0;
 static uint32_t configOverride = 0;
 static unsigned zoneCount = 0;
 static Bool alarmLRR = FALSE;
-static stateBits_t stateBits = {0,0};
+static stateBits_t stateBits = {0,0,0,0,0};
 
 static Bool lineReceived = FALSE;
 static serioStuffPtr_t serioStuff = NULL;
@@ -142,6 +143,9 @@ static char configFile[WS_SIZE] = DEF_CFG_FILE;
 /* Basic command list */
 
 static const String const basicCommandList[] = {
+	"arm-away",
+	"arm-home",
+	"disarm",
 	NULL
 };
 
@@ -388,10 +392,13 @@ zoneMapPtr_t zoneLookup(String s)
 
 static void doGateInfo()
 {
+	int i;
+	String ws;
 	
-	char ws[20];
+	if(!(ws = mallocz(WS_SIZE)))
+		MALLOC_ERROR;
 	
-	snprintf(ws, 20, "%u", zoneCount);
+	
 
 	xPL_setSchema(xplStatusMessage, "security", "gateinfo");
 
@@ -402,10 +409,28 @@ static void doGateInfo()
 	xPL_setMessageNamedValue(xplStatusMessage, "version", VERSION);
 	xPL_setMessageNamedValue(xplStatusMessage, "author", "Stephen A. Rodgers");
 	xPL_setMessageNamedValue(xplStatusMessage, "info-url", "http://xpl.ohnosec.org");
+	snprintf(ws, WS_SIZE, "%u", zoneCount);
 	xPL_setMessageNamedValue(xplStatusMessage, "zone-count", ws);
+	
+	/* Build comma delimited command list */
+	ws[0] = 0;
+	for(i = 0; basicCommandList[i] && (strlen(ws) + strlen(basicCommandList[i]) < WS_SIZE) ; i++){
+			strcat(ws, basicCommandList[i]);
+			strcat(ws, ",");
+	}
+	/* Strip comma from end of string if it is there */
+	i = strlen(ws);
+	if(i)
+		i--;
+	if(ws[i] == ',')
+		ws[i] = 0;
+		
+	xPL_setMessageNamedValue(xplStatusMessage, "gateway-commands", ws);
 
 	if(!xPL_sendMessage(xplStatusMessage))
 		debug(DEBUG_UNEXPECTED, "request.gateinfo transmission failed");
+	free(ws);
+	
 }
 
 /*
@@ -480,6 +505,33 @@ static void doGateStat()
 			debug(DEBUG_UNEXPECTED, "request.gatestat transmission failed");
 }
 
+/*
+ * Arm or disarm the system
+ */
+ 
+
+void doArmDisarm(xPL_MessagePtr theMessage, int cmd)
+{
+	const String code = xPL_getMessageNamedValue(theMessage, "id");
+	
+	if(!code) /* If no code, then bail */
+		return;
+	
+	if(cmd < 2){
+		if(stateBits.ready){
+			serio_printf(serioStuff, "%s%c", code, (cmd == 0) ? '3' : '2');
+		}
+		else{ /* arming failed, send error trigger message */
+			xPL_clearMessageNamedValues(xplEventTriggerMessage);
+			xPL_addMessageNamedValue(xplEventTriggerMessage, "event", "error");
+			xPL_sendMessage(xplEventTriggerMessage);
+		}
+	}
+	else{ /* disarm */
+		serio_printf(serioStuff, "%s1", code);
+	}
+}
+
 
 
 /*
@@ -509,14 +561,15 @@ static void xPLListener(xPL_MessagePtr theMessage, xPL_ObjectPtr userValue)
 				
 				if(!strcmp(type, "basic")){ /* Basic command schema */
 					if(command){
-/*
- * Note: I'm somewhat leery of implementing the arm, disarm, isolate, and bypass commands
- * as premises security could be compromised. Request messages seem be safer than commands,
- * at least to me.
- */
- 
-						switch(matchCommand(basicCommandList, command)){
-
+						int index;
+						switch((index = matchCommand(basicCommandList, command))){
+							
+							case 0: /* arm-away */
+							case 1: /* arm-home */
+							case 2: /* disarm */
+								doArmDisarm(theMessage, index);
+								break;
+							
 							default:
 								break;
 						}
@@ -658,7 +711,7 @@ static void serioHandler(int fd, int revents, int userValue)
 			serialRetryTimer = SERIAL_RETRY_TIME;
 			return; /* Bail */
 		}
-		lineReceived=TRUE;
+		lineReceived = TRUE;
 		line = serio_line(serioStuff);
 		if(line[0] == '['){ /* Parse the status bits */
 			confreadStringCopy(newStatBits, line + 1, 21);
@@ -671,6 +724,12 @@ static void serioHandler(int fd, int revents, int userValue)
 				debug(DEBUG_EXPECTED,"New Status bits: %s", newStatBits);
 			}
 			
+			/* If ready */	
+			if(newStatBits[0] == '1')
+				stateBits.ready = 1;
+			else
+				stateBits.ready = 0;
+							
 			/* If anything is armed */
 			if((newStatBits[1] == '1') || (newStatBits[2] == '1') ||
 			   (newStatBits[12] == '1') || (newStatBits[15] == '1'))
